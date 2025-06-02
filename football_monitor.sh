@@ -36,7 +36,7 @@ FOUND_MATCHES=false
 # Usar jq para procesar JSON y filtrar partidos
 FILTERED_MATCHES=$(echo "$RESPONSE" | jq -r '
     .Games[] | 
-    select(.GT >= 60 and .GT <= 80) |
+    select(.GT >= 10 and .GT <= 80) |
     select(.Scrs[0] == "0" and .Scrs[1] == "0") |
     "\(.Comps[0].Name) - \(.Comps[1].Name) (\(.GT)'"'"')"
 ')
