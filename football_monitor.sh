@@ -25,8 +25,21 @@ RESPONSE=$(curl -s "$API_URL")
 
 # Verificar si la respuesta es válida
 if [ $? -ne 0 ] || [ -z "$RESPONSE" ]; then
-    echo "Error al obtener datos de la API"
+    echo "❌ Error al obtener datos de la API"
     exit 1
+fi
+
+echo "✅ Datos obtenidos de la API"
+
+# Debug: mostrar estructura básica
+echo "🔍 Verificando estructura de datos..."
+GAMES_COUNT=$(echo "$RESPONSE" | jq '.Games | length' 2>/dev/null)
+echo "Partidos encontrados: $GAMES_COUNT"
+
+# Si hay pocos partidos, mostrar algunos para debug
+if [ "$GAMES_COUNT" -le 5 ] && [ "$GAMES_COUNT" -gt 0 ]; then
+    echo "📊 Muestra de partidos (para debug):"
+    echo "$RESPONSE" | jq -r '.Games[0:2][] | "ID: \(.ID?) - GT: \(.GT?) - Scores: \(.Scrs?) - Teams: [\(.Comps[0].Name?), \(.Comps[1].Name?)]"' 2>/dev/null || echo "Error procesando muestra"
 fi
 
 # Procesar partidos y filtrar
@@ -35,16 +48,31 @@ FOUND_MATCHES=false
 
 # Usar jq para procesar JSON y filtrar partidos
 FILTERED_MATCHES=$(echo "$RESPONSE" | jq -r '
-    .Games[] | 
-    select(.GT >= 10 and .GT <= 80) |
-    select(.Scrs[0] == "0.0" and .Scrs[1] == "0.0") |
-    "\(.Comps[0].Name) - \(.Comps[1].Name) (\(.GT)'"'"')"
-')
+    .Games[]? | 
+    select(.GT? >= 10 and .GT? <= 80) |
+    select((.Scrs? | length) >= 2) |
+    select((.Scrs[0] | tonumber) == 0 and (.Scrs[1] | tonumber) == 0) |
+    select((.Comps? | length) >= 2) |
+    "\(.Comps[0].Name?) - \(.Comps[1].Name?) (\(.GT?)'"'"')"
+' 2>/dev/null)
 
 # Construir mensaje
 if [ ! -z "$FILTERED_MATCHES" ]; then
-    MESSAGE="$FILTERED_MATCHES"
+    MESSAGE="🚨 Partidos 0-0 entre minuto 60-80:
+$FILTERED_MATCHES"
     FOUND_MATCHES=true
+    echo "⚽ Partidos encontrados que cumplen criterios:"
+    echo "$FILTERED_MATCHES"
+else
+    echo "ℹ️  No se encontraron partidos 0-0 entre minuto 60-80"
+    
+    # Debug adicional: mostrar partidos en el rango de tiempo
+    echo "🔍 Partidos en rango 60-80 minutos (cualquier score):"
+    echo "$RESPONSE" | jq -r '
+        .Games[]? | 
+        select(.GT? >= 60 and .GT? <= 80) |
+        "- \(.Comps[0].Name? // "N/A") vs \(.Comps[1].Name? // "N/A") (\(.GT?)'"'"') - Score: \(.Scrs[0]? // "N/A")-\(.Scrs[1]? // "N/A")"
+    ' 2>/dev/null | head -3
 fi
 
 # Enviar mensaje a Telegram si hay partidos
