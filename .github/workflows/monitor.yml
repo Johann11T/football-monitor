@@ -2,9 +2,10 @@ name: Football Monitor
 
 on:
   schedule:
-    # Ejecutar cada 30 minutos entre 9 AM y 1 AM UTC
-    # (ajusta la zona horaria según tu ubicación)
-    - cron: '*/15 13-5 * * *'
+    # Ejecutar cada 30 minutos entre 1 PM y 6 AM (UTC)
+    # Dividido en dos rangos porque cruza medianoche:
+    - cron: '*/30 13-23 * * *'   # 1 PM a 11 PM (mismo día UTC)
+    - cron: '*/30 0-6 * * *'     # 12 AM a 6 AM (día siguiente UTC)
   
   # Permite ejecutar manualmente
   workflow_dispatch:
@@ -26,6 +27,6 @@ jobs:
     - name: Run football monitor
       run: ./football_monitor.sh
       env:
-        # Opcional: usar secrets para mayor seguridad
+        # Usar Repository Secrets
         BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
