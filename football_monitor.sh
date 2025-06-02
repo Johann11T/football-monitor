@@ -18,7 +18,7 @@ CURRENT_DATE=$(date +"%d%%2F%m%%2F%Y")
 # URL de la API
 API_URL="https://mobileapi.365scores.com/Data/Games/Live/?startdate=${CURRENT_DATE}&enddate=&FullCurrTime=true&onlyvideos=false&sports=1&withExpanded=true&light=true&ShowNAOdds=true&OddsFormat=1&AppVersion=1417&theme=dark&tz=75&uc=112&athletesSupported=true&StoreVersion=1417&lang=29&AppType=2"
 
-echo "Consultando partidos en vivo..."
+echo "Consultando partidos en vivo (buscando 0-0 entre minuto 10-80)..."
 
 # Realizar petición HTTP y procesar JSON
 RESPONSE=$(curl -s "$API_URL")
@@ -58,16 +58,16 @@ FILTERED_MATCHES=$(echo "$RESPONSE" | jq -r '
 
 # Construir mensaje
 if [ ! -z "$FILTERED_MATCHES" ]; then
-    MESSAGE="🚨 Partidos 0-0 entre minuto -80:
+    MESSAGE="🚨 Partidos 0-0 entre minuto 10-80:
 $FILTERED_MATCHES"
     FOUND_MATCHES=true
     echo "⚽ Partidos encontrados que cumplen criterios:"
     echo "$FILTERED_MATCHES"
 else
-    echo "ℹ️  No se encontraron partidos 0-0 entre minuto -80"
+    echo "ℹ️  No se encontraron partidos 0-0 entre minuto 10-80"
     
     # Debug adicional: mostrar partidos en el rango de tiempo
-    echo "🔍 Partidos en rango -80 minutos (cualquier score):"
+    echo "🔍 Partidos en rango 10-80 minutos (cualquier score):"
     echo "$RESPONSE" | jq -r '
         .Games[]? | 
         select(.GT? >= 10 and .GT? <= 80) |
@@ -104,5 +104,5 @@ if [ "$FOUND_MATCHES" = true ]; then
         echo "$TELEGRAM_RESPONSE" | jq -r '.description // "Error desconocido"'
     fi
 else
-    echo "ℹ️  No se encontraron partidos 0-0 entre minuto 60-80"
+    echo "ℹ️  No se encontraron partidos 0-0 entre minuto 10-80"
 fi
