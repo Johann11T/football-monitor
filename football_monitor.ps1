@@ -18,7 +18,7 @@ Write-Host "🔍 Consulting live matches (searching for 0-0 between minute 10-80
 
 try {
     # Get data from API
-    $response = Invoke-RestMethod -Uri "https://mobileapi.365scores.com/Data/Games/Live/?startdate=$((Get-Date -Format "dd/MM/yyyy") -replace "/", "%2F")&enddate=&FullCurrTime=true&onlyvideos=false&sports=1&withExpanded=true&light=true&ShowNAOdds=true&OddsFormat=1&AppVersion=1417&theme=dark&tz=75&uc=112&athletesSupported=true&StoreVersion=1417&lang=29&AppType=2" -Method Get
+    $response = Invoke-RestMethod -Uri "https://mobileapi.365scores.com/Data/Games/Live/?FullCurrTime=true&onlyvideos=false&sports=1&withExpanded=true&light=true&ShowNAOdds=true&OddsFormat=1&AppVersion=1417&theme=dark&tz=75&uc=112&athletesSupported=true&StoreVersion=1417&lang=29&AppType=2" -Method Get
     
     Write-Host "✅ Data obtained from API" -ForegroundColor Green
     Write-Host "📊 Matches found: $($response.Games.Count)" -ForegroundColor Blue
