@@ -1,8 +1,15 @@
 #!/bin/bash
 
-# Configuración
-BOT_TOKEN="7610496109:AAETDKarqYLdhU8NU2EF5Zt9q4xEWDgXpzQ"
-CHAT_ID="-1002372039350"
+# Configuración - usar variables de entorno desde GitHub Secrets
+BOT_TOKEN="${BOT_TOKEN}"
+CHAT_ID="${CHAT_ID}"
+
+# Verificar que las variables estén configuradas
+if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
+    echo "❌ Error: BOT_TOKEN y CHAT_ID deben estar configurados como secrets"
+    echo "Configura TELEGRAM_BOT_TOKEN y TELEGRAM_CHAT_ID en Repository Secrets"
+    exit 1
+fi
 TELEGRAM_URI="https://api.telegram.org/bot$BOT_TOKEN/sendMessage"
 
 # Obtener fecha actual en formato dd%2FMM%2Fyyyy
