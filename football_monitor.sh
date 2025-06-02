@@ -48,7 +48,7 @@ select(.GT != null and .GT >= 10 and .GT <= 80) |
 select(.Scrs != null and (.Scrs | length) >= 2) |
 select(.Scrs[0] == 0 and .Scrs[1] == 0) |
 select(.Comps != null and (.Comps | length) >= 2) |
-"\(.Comps[0].Name) - \(.Comps[1].Name) (\(.GT)'"'"')"
+"\(.Comps[0].Name) - \(.Comps[1].Name) (\(.GT)min)"
 ' 2>/dev/null)
 
 # Check if we found any matches
@@ -94,7 +94,7 @@ else
     select(.GT != null and .GT >= 10 and .GT <= 80) |
     select(.Comps != null and (.Comps | length) >= 2) |
     select(.Scrs != null and (.Scrs | length) >= 2) |
-    "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT)'"'"') Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
+    "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT)min) Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
     ' 2>/dev/null)
     
     if [ ! -z "$SAMPLE_MATCHES" ]; then
@@ -106,7 +106,7 @@ else
         echo "🔍 All matches (any minute, any score):"
         echo "$RESPONSE" | jq -r '
         .Games[0:3][] | 
-        "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT // "N/A")'"'"') Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
+        "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT // "N/A")min) Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
         ' 2>/dev/null || echo "  Error processing match data"
     fi
 fi
