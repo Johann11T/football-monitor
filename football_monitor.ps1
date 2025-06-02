@@ -1,6 +1,3 @@
-# Clear console
-Clear-Host
-
 # Configuration using environment variables (GitHub Secrets)
 $botToken = $env:BOT_TOKEN
 $chatID = $env:CHAT_ID
