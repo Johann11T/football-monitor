@@ -1,0 +1,31 @@
+name: Football Monitor
+
+on:
+  schedule:
+    # Ejecutar cada 30 minutos entre 9 AM y 1 AM UTC
+    # (ajusta la zona horaria según tu ubicación)
+    - cron: '*/15 13-5 * * *'
+  
+  # Permite ejecutar manualmente
+  workflow_dispatch:
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    
+    - name: Install jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+    
+    - name: Make script executable
+      run: chmod +x ./football_monitor.sh
+    
+    - name: Run football monitor
+      run: ./football_monitor.sh
+      env:
+        # Opcional: usar secrets para mayor seguridad
+        BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
