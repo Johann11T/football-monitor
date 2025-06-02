@@ -46,7 +46,7 @@ cat > /tmp/jq_query.jq << 'EOF'
 .Games[] | 
 select(.GT != null and .GT >= 10 and .GT <= 80) |
 select(.Scrs != null and (.Scrs | length) >= 2) |
-select(.Scrs[0] == 0 and .Scrs[1] == 0) |
+select((.Scrs[0] | tonumber) == 0 and (.Scrs[1] | tonumber) == 0) |
 select(.Comps != null and (.Comps | length) >= 2) |
 {
   team1: .Comps[0].Name,
