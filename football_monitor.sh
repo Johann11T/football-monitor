@@ -58,19 +58,19 @@ FILTERED_MATCHES=$(echo "$RESPONSE" | jq -r '
 
 # Construir mensaje
 if [ ! -z "$FILTERED_MATCHES" ]; then
-    MESSAGE="🚨 Partidos 0-0 entre minuto 60-80:
+    MESSAGE="🚨 Partidos 0-0 entre minuto -80:
 $FILTERED_MATCHES"
     FOUND_MATCHES=true
     echo "⚽ Partidos encontrados que cumplen criterios:"
     echo "$FILTERED_MATCHES"
 else
-    echo "ℹ️  No se encontraron partidos 0-0 entre minuto 60-80"
+    echo "ℹ️  No se encontraron partidos 0-0 entre minuto -80"
     
     # Debug adicional: mostrar partidos en el rango de tiempo
-    echo "🔍 Partidos en rango 60-80 minutos (cualquier score):"
+    echo "🔍 Partidos en rango -80 minutos (cualquier score):"
     echo "$RESPONSE" | jq -r '
         .Games[]? | 
-        select(.GT? >= 60 and .GT? <= 80) |
+        select(.GT? >= 10 and .GT? <= 80) |
         "- \(.Comps[0].Name? // "N/A") vs \(.Comps[1].Name? // "N/A") (\(.GT?)'"'"') - Score: \(.Scrs[0]? // "N/A")-\(.Scrs[1]? // "N/A")"
     ' 2>/dev/null | head -3
 fi
