@@ -15,10 +15,7 @@ if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
     exit 1
 fi
 
-# Get current date in dd%2FMM%2Fyyyy format
-CURRENT_DATE=$(date +"%d%%2F%m%%2F%Y")
-
-# API URL
+# API URL - Updated to new endpoint
 API_URL="https://mobileapi.365scores.com/Data/Games/Live/?FullCurrTime=true&onlyvideos=false&sports=1&withExpanded=true&light=true&ShowNAOdds=true&OddsFormat=1&AppVersion=1417&theme=dark&tz=75&uc=112&athletesSupported=true&StoreVersion=1417&lang=29&AppType=2"
 
 echo "🔍 Consulting live matches (searching for 0-0 between minute 10-80)..."
@@ -44,40 +41,81 @@ echo "🔍 Processing matches..."
 FOUND_MATCHES=false
 MESSAGE_CONTENT=""
 
-# Use jq to process and filter matches
-FILTERED_RESULTS=$(echo "$RESPONSE" | jq -r '
+# Use jq to find and format matches directly
+MATCH_LINES=$(echo "$RESPONSE" | jq -r '
 .Games[] | 
 select(.GT != null and .GT >= 10 and .GT <= 80) |
 select(.Scrs != null and (.Scrs | length) >= 2) |
 select(.Scrs[0] == 0 and .Scrs[1] == 0) |
 select(.Comps != null and (.Comps | length) >= 2) |
-{
-  team1: .Comps[0].Name,
-  team2: .Comps[1].Name,
-  minute: .GT
-}' 2>/dev/null)
+"\(.Comps[0].Name) - \(.Comps[1].Name) (\(.GT)'"'"')"
+' 2>/dev/null)
 
 # Check if we found any matches
-if [ ! -z "$FILTERED_RESULTS" ]; then
-    echo "⚽ Processing found matches..."
+if [ ! -z "$MATCH_LINES" ]; then
+    echo "⚽ Found matches that meet criteria:"
     
     # Build message content
-    MESSAGE_CONTENT="🚨 0-0 Matches between minute 10-80:\n"
+    MESSAGE_CONTENT="🚨 0-0 Matches between minute 10-80:"
     
-    # Process each match found
-    while IFS= read -r match; do
-        if [ ! -z "$match" ]; then
-            TEAM1=$(echo "$match" | jq -r '.team1')
-            TEAM2=$(echo "$match" | jq -r '.team2')
-            MINUTE=$(echo "$match" | jq -r '.minute')
-            
-            MATCH_LINE="$TEAM1 - $TEAM2 ($MINUTE')"
-            MESSAGE_CONTENT="${MESSAGE_CONTENT}${MATCH_LINE}\n"
-            
-            echo "⚽ Found: $MATCH_LINE"
+    # Add each match line
+    while IFS= read -r line; do
+        if [ ! -z "$line" ]; then
+            MESSAGE_CONTENT="$MESSAGE_CONTENT"
+
+# Send message to Telegram if matches were found
+if [ "$FOUND_MATCHES" = true ]; then
+    echo "📤 Sending message to Telegram..."
+    
+    # Prepare message for Telegram (replace newlines for proper JSON)
+    TELEGRAM_MESSAGE=$(echo "$MESSAGE_CONTENT" | sed ':a;N;$!ba;s/\n/\\n/g')
+    
+    # Send using curl with form data (simpler than JSON)
+    TELEGRAM_RESPONSE=$(curl -s -X POST \
+        -F "chat_id=$CHAT_ID" \
+        -F "text=$MESSAGE_CONTENT" \
+        -F "message_thread_id=1241" \
+        "$TELEGRAM_URI")
+    
+    # Check response from Telegram
+    if echo "$TELEGRAM_RESPONSE" | jq -e '.ok' > /dev/null 2>&1; then
+        echo "✅ Message sent successfully to Telegram"
+    else
+        echo "❌ Error sending message to Telegram:"
+        echo "$TELEGRAM_RESPONSE" | jq -r '.description // "Unknown error"' 2>/dev/null || echo "Failed to parse error response"
+    fi
+else
+    echo "ℹ️  No 0-0 matches found between minute 10-80"
+    
+    # Debug: show some matches in the time range for verification
+    echo "🔍 Sample matches in range 10-80 minutes (any score):"
+    SAMPLE_MATCHES=$(echo "$RESPONSE" | jq -r '
+    .Games[] | 
+    select(.GT != null and .GT >= 10 and .GT <= 80) |
+    select(.Comps != null and (.Comps | length) >= 2) |
+    select(.Scrs != null and (.Scrs | length) >= 2) |
+    "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT)'"'"') Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
+    ' 2>/dev/null)
+    
+    if [ ! -z "$SAMPLE_MATCHES" ]; then
+        echo "$SAMPLE_MATCHES" | head -5
+    else
+        echo "  No matches in range to display"
+        
+        # Show any matches at all for debugging
+        echo "🔍 All matches (any minute, any score):"
+        echo "$RESPONSE" | jq -r '
+        .Games[0:3][] | 
+        "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT // "N/A")'"'"') Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
+        ' 2>/dev/null || echo "  Error processing match data"
+    fi
+fi
+
+echo "🏁 Script completed successfully"\n'"$line"
+            echo "⚽ Found: $line"
             FOUND_MATCHES=true
         fi
-    done <<< "$FILTERED_RESULTS"
+    done <<< "$MATCH_LINES"
 fi
 
 # Send message to Telegram if matches were found
