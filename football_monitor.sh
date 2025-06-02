@@ -37,7 +37,7 @@ FOUND_MATCHES=false
 FILTERED_MATCHES=$(echo "$RESPONSE" | jq -r '
     .Games[] | 
     select(.GT >= 10 and .GT <= 80) |
-    select(.Scrs[0] == "0" and .Scrs[1] == "0") |
+    select(.Scrs[0] == "0.0" and .Scrs[1] == "0.0") |
     "\(.Comps[0].Name) - \(.Comps[1].Name) (\(.GT)'"'"')"
 ')
 
