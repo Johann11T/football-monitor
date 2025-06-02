@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Football Monitor Script - Fast and Simple
-# Searches for 0-0 matches between minute 10-80
+# Searches for 0-0 matches between minute 60-80
 
 # Configuration - use environment variables from GitHub Secrets
 BOT_TOKEN="${BOT_TOKEN}"
@@ -42,9 +42,9 @@ for i in $(seq 0 $((GAMES_COUNT - 1))); do
         SCORE1=$(echo "$GAME" | jq -r '.Scrs[0] // empty' 2>/dev/null)
         SCORE2=$(echo "$GAME" | jq -r '.Scrs[1] // empty' 2>/dev/null)
         
-        # Check criteria: minute 10-80, scores 0-0
+        # Check criteria: minute 60-80, scores 0-0
         if [ ! -z "$GT" ] && [ ! -z "$TEAM1" ] && [ ! -z "$TEAM2" ] && [ ! -z "$SCORE1" ] && [ ! -z "$SCORE2" ]; then
-            if [ "$GT" -ge 10 ] && [ "$GT" -le 80 ]; then
+            if [ "$GT" -ge 60 ] && [ "$GT" -le 80 ]; then
                 SCORE1_INT=$(echo "$SCORE1" | cut -d. -f1)
                 SCORE2_INT=$(echo "$SCORE2" | cut -d. -f1)
                 
@@ -59,7 +59,7 @@ done
 
 # Send message if matches found
 if [ "$FOUND_MATCHES" = true ]; then
-    MESSAGE_CONTENT="🚨 0-0 Matches between minute 10-80:"$'\n'"$MATCH_LINES"
+    MESSAGE_CONTENT="🚨 0-0 Matches between minute 60-80:"$'\n'"$MATCH_LINES"
     
     curl -s -X POST \
         -F "chat_id=$CHAT_ID" \
