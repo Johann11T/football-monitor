@@ -41,34 +41,66 @@ echo "🔍 Processing matches..."
 FOUND_MATCHES=false
 MESSAGE_CONTENT=""
 
-# Use jq to find and format matches directly
-MATCH_LINES=$(echo "$RESPONSE" | jq -r '
+# Save jq query to a file to avoid quoting issues
+cat > /tmp/jq_query.jq << 'EOF'
 .Games[] | 
 select(.GT != null and .GT >= 10 and .GT <= 80) |
 select(.Scrs != null and (.Scrs | length) >= 2) |
 select(.Scrs[0] == 0 and .Scrs[1] == 0) |
 select(.Comps != null and (.Comps | length) >= 2) |
-"\(.Comps[0].Name) - \(.Comps[1].Name) (\(.GT)min)"
-' 2>/dev/null)
+{
+  team1: .Comps[0].Name,
+  team2: .Comps[1].Name,  
+  minute: .GT
+}
+EOF
+
+# Execute jq using the query file
+FILTERED_RESULTS=$(echo "$RESPONSE" | jq -f /tmp/jq_query.jq 2>/dev/null)
 
 # Check if we found any matches
-if [ ! -z "$MATCH_LINES" ]; then
-    echo "⚽ Found matches that meet criteria:"
+if [ ! -z "$FILTERED_RESULTS" ] && [ "$FILTERED_RESULTS" != "null" ]; then
+    echo "⚽ Processing found matches..."
     
     # Build message content
     MESSAGE_CONTENT="🚨 0-0 Matches between minute 10-80:"
     
-    # Add each match line
-    while IFS= read -r line; do
-        if [ ! -z "$line" ]; then
-            MESSAGE_CONTENT="$MESSAGE_CONTENT"
+    # Process each match found - using a different approach
+    echo "$FILTERED_RESULTS" | while IFS= read -r line; do
+        if [[ "$line" =~ ^\{ ]] && [[ "$line" =~ \}$ ]]; then
+            # Extract values using jq for each individual match object
+            TEAM1=$(echo "$line" | jq -r '.team1')
+            TEAM2=$(echo "$line" | jq -r '.team2') 
+            MINUTE=$(echo "$line" | jq -r '.minute')
+            
+            if [ "$TEAM1" != "null" ] && [ "$TEAM2" != "null" ] && [ "$MINUTE" != "null" ]; then
+                MATCH_LINE="$TEAM1 - $TEAM2 (${MINUTE}min)"
+                echo "⚽ Found: $MATCH_LINE"
+                
+                # Save to file since we're in a subshell
+                echo "$MATCH_LINE" >> /tmp/matches_found.txt
+                FOUND_MATCHES=true
+            fi
+        fi
+    done
+    
+    # Check if any matches were saved to file
+    if [ -f /tmp/matches_found.txt ] && [ -s /tmp/matches_found.txt ]; then
+        FOUND_MATCHES=true
+        MESSAGE_CONTENT="🚨 0-0 Matches between minute 10-80:"
+        
+        # Read matches from file and build message
+        while IFS= read -r match_line; do
+            MESSAGE_CONTENT="$MESSAGE_CONTENT"$'\n'"$match_line"
+        done < /tmp/matches_found.txt
+        
+        echo "✅ Found matches to report"
+    fi
+fi
 
 # Send message to Telegram if matches were found
-if [ "$FOUND_MATCHES" = true ]; then
+if [ "$FOUND_MATCHES" = true ] && [ -f /tmp/matches_found.txt ] && [ -s /tmp/matches_found.txt ]; then
     echo "📤 Sending message to Telegram..."
-    
-    # Prepare message for Telegram (replace newlines for proper JSON)
-    TELEGRAM_MESSAGE=$(echo "$MESSAGE_CONTENT" | sed ':a;N;$!ba;s/\n/\\n/g')
     
     # Send using curl with form data (simpler than JSON)
     TELEGRAM_RESPONSE=$(curl -s -X POST \
@@ -80,6 +112,10 @@ if [ "$FOUND_MATCHES" = true ]; then
     # Check response from Telegram
     if echo "$TELEGRAM_RESPONSE" | jq -e '.ok' > /dev/null 2>&1; then
         echo "✅ Message sent successfully to Telegram"
+        
+        # Show what was sent
+        echo "📋 Message content:"
+        cat /tmp/matches_found.txt
     else
         echo "❌ Error sending message to Telegram:"
         echo "$TELEGRAM_RESPONSE" | jq -r '.description // "Unknown error"' 2>/dev/null || echo "Failed to parse error response"
@@ -89,13 +125,17 @@ else
     
     # Debug: show some matches in the time range for verification
     echo "🔍 Sample matches in range 10-80 minutes (any score):"
-    SAMPLE_MATCHES=$(echo "$RESPONSE" | jq -r '
-    .Games[] | 
-    select(.GT != null and .GT >= 10 and .GT <= 80) |
-    select(.Comps != null and (.Comps | length) >= 2) |
-    select(.Scrs != null and (.Scrs | length) >= 2) |
-    "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT)min) Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
-    ' 2>/dev/null)
+    
+    # Create debug query file
+    cat > /tmp/debug_query.jq << 'EOF'
+.Games[] | 
+select(.GT != null and .GT >= 10 and .GT <= 80) |
+select(.Comps != null and (.Comps | length) >= 2) |
+select(.Scrs != null and (.Scrs | length) >= 2) |
+"  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT)min) Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
+EOF
+    
+    SAMPLE_MATCHES=$(echo "$RESPONSE" | jq -r -f /tmp/debug_query.jq 2>/dev/null)
     
     if [ ! -z "$SAMPLE_MATCHES" ]; then
         echo "$SAMPLE_MATCHES" | head -5
@@ -104,60 +144,11 @@ else
         
         # Show any matches at all for debugging
         echo "🔍 All matches (any minute, any score):"
-        echo "$RESPONSE" | jq -r '
-        .Games[0:3][] | 
-        "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT // "N/A")min) Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
-        ' 2>/dev/null || echo "  Error processing match data"
+        echo "$RESPONSE" | jq -r '.Games[0:3][] | "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT // "N/A")min) Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"' 2>/dev/null || echo "  Error processing match data"
     fi
 fi
 
-echo "🏁 Script completed successfully"\n'"$line"
-            echo "⚽ Found: $line"
-            FOUND_MATCHES=true
-        fi
-    done <<< "$MATCH_LINES"
-fi
-
-# Send message to Telegram if matches were found
-if [ "$FOUND_MATCHES" = true ]; then
-    echo "📤 Sending message to Telegram..."
-    
-    # Prepare JSON payload for Telegram
-    JSON_PAYLOAD=$(jq -n \
-        --arg chat_id "$CHAT_ID" \
-        --arg text "$MESSAGE_CONTENT" \
-        --argjson thread_id 1241 \
-        '{
-            chat_id: $chat_id,
-            text: $text,
-            message_thread_id: $thread_id
-        }')
-    
-    # Send message to Telegram
-    TELEGRAM_RESPONSE=$(curl -s -X POST \
-        -H "Content-Type: application/json" \
-        -d "$JSON_PAYLOAD" \
-        "$TELEGRAM_URI")
-    
-    # Check response from Telegram
-    if echo "$TELEGRAM_RESPONSE" | jq -e '.ok' > /dev/null 2>&1; then
-        echo "✅ Message sent successfully to Telegram"
-    else
-        echo "❌ Error sending message to Telegram:"
-        echo "$TELEGRAM_RESPONSE" | jq -r '.description // "Unknown error"' 2>/dev/null || echo "Failed to parse error response"
-    fi
-else
-    echo "ℹ️  No 0-0 matches found between minute 10-80"
-    
-    # Debug: show some matches in the time range for verification
-    echo "🔍 Sample matches in range 10-80 minutes (any score):"
-    echo "$RESPONSE" | jq -r '
-    .Games[] | 
-    select(.GT != null and .GT >= 10 and .GT <= 80) |
-    select(.Comps != null and (.Comps | length) >= 2) |
-    select(.Scrs != null and (.Scrs | length) >= 2) |
-    "  - \(.Comps[0].Name // "N/A") vs \(.Comps[1].Name // "N/A") (\(.GT)'"'"') Score: \(.Scrs[0] // "N/A")-\(.Scrs[1] // "N/A")"
-    ' 2>/dev/null | head -5 || echo "  No matches in range to display"
-fi
+# Cleanup temp files
+rm -f /tmp/jq_query.jq /tmp/debug_query.jq /tmp/matches_found.txt
 
 echo "🏁 Script completed successfully"
