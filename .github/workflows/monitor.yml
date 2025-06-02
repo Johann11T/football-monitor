@@ -1,26 +1,31 @@
-name: Football Monitor PowerShell
+name: Football Monitor Linux
 
 on:
   schedule:
-    # Execute every 15 minutes between 1 PM and 6 AM (UTC)
+    # Execute every 10 minutes between 1 PM and 6 AM (UTC)
     # Split into two ranges because it crosses midnight:
-    - cron: '*/15 13-23 * * *'   # 1 PM to 11 PM UTC
-    - cron: '*/15 0-6 * * *'     # 12 AM to 6 AM UTC
+    - cron: '*/10 13-23 * * *'   # 1 PM to 11 PM UTC (every 10 minutes)
+    - cron: '*/10 0-6 * * *'     # 12 AM to 6 AM UTC (every 10 minutes)
   
   # Allow manual execution
   workflow_dispatch:
 
 jobs:
   monitor:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
     
+    - name: Install jq (JSON processor)
+      run: sudo apt-get update && sudo apt-get install -y jq
+    
+    - name: Make script executable
+      run: chmod +x ./football_monitor.sh
+    
     - name: Run football monitor
-      shell: pwsh
-      run: .\football_monitor.ps1
+      run: ./football_monitor.sh
       env:
         # Use Repository Secrets
         BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
