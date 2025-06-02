@@ -14,7 +14,7 @@ $uri = "https://api.telegram.org/bot$botToken/sendMessage"
 # Configure security protocol
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
-Write-Host "🔍 Consulting live matches (searching for 0-0 between minute 10-80)..." -ForegroundColor Cyan
+Write-Host "🔍 Consulting live matches (searching for 0-0 between minute 60-80)..." -ForegroundColor Cyan
 
 try {
     # Get data from API
@@ -29,8 +29,8 @@ try {
     foreach ($match in $response.Games) {
         $gameTime = $match.GT
         
-        # Search for matches between minute 10-80 with score 0-0
-        if (($match.GT -ge 10) -and ($match.GT -le 80)) {
+        # Search for matches between minute 60-80 with score 0-0
+        if (($match.GT -ge 60) -and ($match.GT -le 80)) {
             if (([int]$match.Scrs[0] -eq 0) -and ([int]$match.Scrs[1] -eq 0)) {
                 $matchInfo = "$($match.Comps[0].Name) - $($match.Comps[1].Name) ($($match.GT)')"
                 $message += "$matchInfo`n"
@@ -42,7 +42,7 @@ try {
     
     # Send message only if there are matches that meet criteria
     if ($message.Count -gt 0) {
-        $finalMessage = "🚨 Matches 0-0 between minute 10-80:`n" + [String]::Join("", $message)
+        $finalMessage = "🚨 Matches 0-0 between minute 60-80:`n" + [String]::Join("", $message)
         
         $body = @{
             chat_id = $chatID
@@ -61,10 +61,10 @@ try {
         }
     }
     else {
-        Write-Host "ℹ️  No 0-0 matches found between minute 10-80" -ForegroundColor Yellow
+        Write-Host "ℹ️  No 0-0 matches found between minute 60-80" -ForegroundColor Yellow
         
         # Debug: show some matches in range to verify
-        $debugMatches = $response.Games | Where-Object { $_.GT -ge 10 -and $_.GT -le 80 } | Select-Object -First 3
+        $debugMatches = $response.Games | Where-Object { $_.GT -ge 60 -and $_.GT -le 80 } | Select-Object -First 3
         if ($debugMatches) {
             Write-Host "🔍 Sample matches in range 10-80 min:" -ForegroundColor Magenta
             foreach ($match in $debugMatches) {
