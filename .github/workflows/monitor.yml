@@ -1,11 +1,11 @@
 name: Football Monitor Linux
 
 on:
-  schedule:
+  #schedule:
     # Execute every 10 minutes between 1 PM and 6 AM (UTC)
     # Split into two ranges because it crosses midnight:
-    - cron: '3,13,23,33,43,53 13-23 * * *'   # 1 PM to 11 PM UTC (every 10 minutes)
-    - cron: '3,13,23,33,43,53 0-6 * * *'     # 12 AM to 6 AM UTC (every 10 minutes)
+    #- cron: '3,13,23,33,43,53 13-23 * * *'   # 1 PM to 11 PM UTC (every 10 minutes)
+    #- cron: '3,13,23,33,43,53 0-6 * * *'     # 12 AM to 6 AM UTC (every 10 minutes)
   
   # Allow manual execution
   workflow_dispatch:
