@@ -36,7 +36,7 @@ for i in $(seq 0 $((GAMES_COUNT - 1))); do
         
         # Check criteria: minute 60-80, scores 0-0
         if [ ! -z "$GT" ] && [ ! -z "$TEAM1" ] && [ ! -z "$TEAM2" ] && [ ! -z "$SCORE1" ] && [ ! -z "$SCORE2" ]; then
-            if [ "$GT" -ge 60 ] && [ "$GT" -le 80 ]; then
+            if [ "$GT" -ge 10 ] && [ "$GT" -le 80 ]; then
                 SCORE1_INT=$(echo "$SCORE1" | cut -d. -f1)
                 SCORE2_INT=$(echo "$SCORE2" | cut -d. -f1)
                 
