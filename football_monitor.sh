@@ -22,8 +22,8 @@ fi
 GAMES_COUNT=$(echo "$RESPONSE" | jq '.Games | length' 2>/dev/null)
 # Process games and find 0-0 matches
 FOUND_MATCHES=false
-MATCH_LINES=""
 for i in $(seq 0 $((GAMES_COUNT - 1))); do
+    MATCH_LINE=""
     GAME=$(echo "$RESPONSE" | jq ".Games[$i]" 2>/dev/null)
     
     if [ ! -z "$GAME" ] && [ "$GAME" != "null" ]; then
@@ -44,27 +44,26 @@ for i in $(seq 0 $((GAMES_COUNT - 1))); do
                     # Get competition name
                     COMP_NAME=$(echo "$RESPONSE" | jq -r --arg comp_id "$COMP_ID" '.Competitions[] | select(.ID == ($comp_id | tonumber)) | .Name // empty' 2>/dev/null)
                     if [ ! -z "$COMP_NAME" ]; then
-                        MATCH_LINES="$MATCH_LINES($COMP_NAME) $TEAM1 - $TEAM2 (${GT}min)"$'\n'
+                        MATCH_LINE="($COMP_NAME) $TEAM1 - $TEAM2 (${GT}min)"$'\n'
                     else
-                        MATCH_LINES="$MATCH_LINES$TEAM1 - $TEAM2 (${GT}min)"$'\n'
+                        MATCH_LINE="$TEAM1 - $TEAM2 (${GT}min)"$'\n'
                     fi
                     FOUND_MATCHES=true
+                    # Send message
+                    MESSAGE_CONTENT="🚨 0-0 Match between minute 60-80:"$'\n'"$MATCH_LINE"
+
+                    curl -s -X POST \
+                    -F "chat_id=$CHAT_ID" \
+                    -F "text=$MESSAGE_CONTENT" \
+                    -F "message_thread_id=1241" \
+                    "$TELEGRAM_URI" > /dev/null
+                        
+                    echo "✅ Message sent to Telegram"
                 fi
             fi
         fi
     fi
 done
-# Send message if matches found
-if [ "$FOUND_MATCHES" = true ]; then
-    MESSAGE_CONTENT="🚨 0-0 Matches between minute 60-80:"$'\n'"$MATCH_LINES"
-    
-    curl -s -X POST \
-        -F "chat_id=$CHAT_ID" \
-        -F "text=$MESSAGE_CONTENT" \
-        -F "message_thread_id=1241" \
-        "$TELEGRAM_URI" > /dev/null
-    
-    echo "✅ Message sent to Telegram"
-else
+if [ "$FOUND_MATCHES" = false ]; then
     echo "ℹ️ No 0-0 matches found"
 fi
