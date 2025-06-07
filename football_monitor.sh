@@ -126,7 +126,7 @@ FOUND_ALERTS=false
 
 # Process filtered matches
 while IFS=',' read -r match_id home_team away_team league minute_num; do
-    echo "📊 Getting statistics for: $home_team vs $away_team (${minute_num}')"
+    echo "📊 Getting statistics for: $home_team vs $away_team (${minute_num}min)"
     
     # Second API call - Get live statistics
     STATS_RESPONSE=$(curl -s --compressed -X POST \
