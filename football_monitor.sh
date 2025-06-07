@@ -111,7 +111,16 @@ while IFS=',' read -r match_id home_team away_team league minute_raw; do
     fi
     
     # Check if minute is numeric and between 60-80
-    if echo "$minute_raw" | grep -q '^[0-9]\+
+    if echo "$minute_raw" | grep -q '^[0-9]\+$'; then
+        minute_num="$minute_raw"
+        # Additional safety check - ensure minute_num is actually a number
+        if [ -n "$minute_num" ] && [ "$minute_num" -eq "$minute_num" ] 2>/dev/null; then
+            if [ "$minute_num" -ge 10 ] && [ "$minute_num" -le 80 ]; then
+                echo "$match_id,$home_team,$away_team,$league,$minute_num" >> "$TEMP_FILTERED"
+                FILTERED_MATCHES_COUNT=$((FILTERED_MATCHES_COUNT + 1))
+            fi
+        fi
+    fi
 done < "$TEMP_MATCHES"
 
 if [ "$FILTERED_MATCHES_COUNT" = "0" ]; then
@@ -164,45 +173,53 @@ while IFS=',' read -r match_id home_team away_team league minute_num; do
         continue
     fi
     
-    # Extract ALL statistics with original formatting
-    HOME_TEAM_NAME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ITeam") | .itemValueHome' 2>/dev/null)
-    AWAY_TEAM_NAME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ITeam") | .itemValueAway' 2>/dev/null)
+    # Create temporary file for stats processing
+    TEMP_STATS="/tmp/stats_$$"
+    echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | [.itemName, .itemValueHome, .itemValueAway] | @csv' > "$TEMP_STATS" 2>/dev/null
     
-    HOME_GOALS=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoal") | .itemValueHome' 2>/dev/null)
-    AWAY_GOALS=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoal") | .itemValueAway' 2>/dev/null)
+    # Function to get stat value
+    get_stat() {
+        local stat_name="$1"
+        local home_away="$2"  # "home" or "away"
+        local column=2
+        if [ "$home_away" = "away" ]; then
+            column=3
+        fi
+        
+        grep "\"$stat_name\"" "$TEMP_STATS" | cut -d',' -f"$column" | tr -d '"' | head -1
+    }
     
-    ON_TARGET_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IOnTarget") | .itemValueHome' 2>/dev/null)
-    ON_TARGET_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IOnTarget") | .itemValueAway' 2>/dev/null)
-    OFF_TARGET_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IOffTarget") | .itemValueHome' 2>/dev/null)
-    OFF_TARGET_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IOffTarget") | .itemValueAway' 2>/dev/null)
+    # Extract key statistics
+    HOME_TEAM_NAME=$(get_stat "ITeam" "home")
+    AWAY_TEAM_NAME=$(get_stat "ITeam" "away")
+    HOME_GOALS=$(get_stat "IGoal" "home")
+    AWAY_GOALS=$(get_stat "IGoal" "away")
+    HOME_YELLOW=$(get_stat "IYellowCard" "home")
+    AWAY_YELLOW=$(get_stat "IYellowCard" "away")
+    HOME_RED=$(get_stat "IRedCard" "home")
+    AWAY_RED=$(get_stat "IRedCard" "away")
     
-    ATTACKS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IAttacks") | .itemValueHome' 2>/dev/null)
-    ATTACKS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IAttacks") | .itemValueAway' 2>/dev/null)
-    DANGEROUS_ATTACKS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IDangerousAttacks") | .itemValueHome' 2>/dev/null)
-    DANGEROUS_ATTACKS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IDangerousAttacks") | .itemValueAway' 2>/dev/null)
-    
-    POSSESSION_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IPosession") | .itemValueHome' 2>/dev/null)
-    POSSESSION_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IPosession") | .itemValueAway' 2>/dev/null)
-    
-    CORNERS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ICorner") | .itemValueHome' 2>/dev/null)
-    CORNERS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ICorner") | .itemValueAway' 2>/dev/null)
-    
-    HOME_YELLOW=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IYellowCard") | .itemValueHome' 2>/dev/null)
-    AWAY_YELLOW=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IYellowCard") | .itemValueAway' 2>/dev/null)
-    HOME_RED=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IRedCard") | .itemValueHome' 2>/dev/null)
-    AWAY_RED=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IRedCard") | .itemValueAway' 2>/dev/null)
-    
-    SUBSTITUTIONS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ISubstitution") | .itemValueHome' 2>/dev/null)
-    SUBSTITUTIONS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ISubstitution") | .itemValueAway' 2>/dev/null)
-    
-    FREE_KICKS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IFreeKick") | .itemValueHome' 2>/dev/null)
-    FREE_KICKS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IFreeKick") | .itemValueAway' 2>/dev/null)
-    
-    THROW_INS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IThrowIn") | .itemValueHome' 2>/dev/null)
-    THROW_INS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IThrowIn") | .itemValueAway' 2>/dev/null)
-    
-    GOAL_KICKS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoalKick") | .itemValueHome' 2>/dev/null)
-    GOAL_KICKS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoalKick") | .itemValueAway' 2>/dev/null)
+    # Get all other stats for display
+    ON_TARGET_HOME=$(get_stat "IOnTarget" "home")
+    ON_TARGET_AWAY=$(get_stat "IOnTarget" "away")
+    OFF_TARGET_HOME=$(get_stat "IOffTarget" "home")
+    OFF_TARGET_AWAY=$(get_stat "IOffTarget" "away")
+    ATTACKS_HOME=$(get_stat "IAttacks" "home")
+    ATTACKS_AWAY=$(get_stat "IAttacks" "away")
+    DANGEROUS_ATTACKS_HOME=$(get_stat "IDangerousAttacks" "home")
+    DANGEROUS_ATTACKS_AWAY=$(get_stat "IDangerousAttacks" "away")
+    POSSESSION_HOME=$(get_stat "IPosession" "home")
+    POSSESSION_AWAY=$(get_stat "IPosession" "away")
+    CORNERS_HOME=$(get_stat "ICorner" "home")
+    CORNERS_AWAY=$(get_stat "ICorner" "away")
+    SUBSTITUTIONS_HOME=$(get_stat "ISubstitution" "home")
+    SUBSTITUTIONS_AWAY=$(get_stat "ISubstitution" "away")
+    FREE_KICKS_HOME=$(get_stat "IFreeKick" "home")
+    FREE_KICKS_AWAY=$(get_stat "IFreeKick" "away")
+    THROW_INS_HOME=$(get_stat "IThrowIn" "home")
+    THROW_INS_AWAY=$(get_stat "IThrowIn" "away")
+    GOAL_KICKS_HOME=$(get_stat "IGoalKick" "home")
+    GOAL_KICKS_AWAY=$(get_stat "IGoalKick" "away")
     
     # Convert to integers (handle null/empty values)
     HOME_GOALS_INT=$(echo "$HOME_GOALS" | grep -E '^[0-9]+$' || echo "0")
@@ -211,31 +228,6 @@ while IFS=',' read -r match_id home_team away_team league minute_num; do
     AWAY_YELLOW_INT=$(echo "$AWAY_YELLOW" | grep -E '^[0-9]+$' || echo "0")
     HOME_RED_INT=$(echo "$HOME_RED" | grep -E '^[0-9]+$' || echo "0")
     AWAY_RED_INT=$(echo "$AWAY_RED" | grep -E '^[0-9]+$' || echo "0")
-    
-    ON_TARGET_HOME_INT=$(echo "$ON_TARGET_HOME" | grep -E '^[0-9]+$' || echo "0")
-    ON_TARGET_AWAY_INT=$(echo "$ON_TARGET_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    OFF_TARGET_HOME_INT=$(echo "$OFF_TARGET_HOME" | grep -E '^[0-9]+$' || echo "0")
-    OFF_TARGET_AWAY_INT=$(echo "$OFF_TARGET_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    ATTACKS_HOME_INT=$(echo "$ATTACKS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    ATTACKS_AWAY_INT=$(echo "$ATTACKS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    DANGEROUS_ATTACKS_HOME_INT=$(echo "$DANGEROUS_ATTACKS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    DANGEROUS_ATTACKS_AWAY_INT=$(echo "$DANGEROUS_ATTACKS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    CORNERS_HOME_INT=$(echo "$CORNERS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    CORNERS_AWAY_INT=$(echo "$CORNERS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    SUBSTITUTIONS_HOME_INT=$(echo "$SUBSTITUTIONS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    SUBSTITUTIONS_AWAY_INT=$(echo "$SUBSTITUTIONS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    FREE_KICKS_HOME_INT=$(echo "$FREE_KICKS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    FREE_KICKS_AWAY_INT=$(echo "$FREE_KICKS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    THROW_INS_HOME_INT=$(echo "$THROW_INS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    THROW_INS_AWAY_INT=$(echo "$THROW_INS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    GOAL_KICKS_HOME_INT=$(echo "$GOAL_KICKS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    GOAL_KICKS_AWAY_INT=$(echo "$GOAL_KICKS_AWAY" | grep -E '^[0-9]+$' || echo "0")
     
     # Create detailed message with EXACT original formatting
     MESSAGE="
@@ -248,23 +240,23 @@ while IFS=',' read -r match_id home_team away_team league minute_num; do
 ⚽ SCORE:                ${HOME_GOALS_INT} - ${AWAY_GOALS_INT}
 
 🎯 SHOOTING STATS:
-   Shots on target:      ${ON_TARGET_HOME_INT} - ${ON_TARGET_AWAY_INT}
-   Shots off target:     ${OFF_TARGET_HOME_INT} - ${OFF_TARGET_AWAY_INT}
+   Shots on target:      ${ON_TARGET_HOME:-0} - ${ON_TARGET_AWAY:-0}
+   Shots off target:     ${OFF_TARGET_HOME:-0} - ${OFF_TARGET_AWAY:-0}
 
 ⚡ ATTACKS:
-   Total attacks:        ${ATTACKS_HOME_INT} - ${ATTACKS_AWAY_INT}
-   Dangerous attacks:    ${DANGEROUS_ATTACKS_HOME_INT} - ${DANGEROUS_ATTACKS_AWAY_INT}
+   Total attacks:        ${ATTACKS_HOME:-0} - ${ATTACKS_AWAY:-0}
+   Dangerous attacks:    ${DANGEROUS_ATTACKS_HOME:-0} - ${DANGEROUS_ATTACKS_AWAY:-0}
 
 🏃 POSSESSION:           ${POSSESSION_HOME:-0}% - ${POSSESSION_AWAY:-0}%
 
 📋 OTHER STATISTICS:
-   Corners:              ${CORNERS_HOME_INT} - ${CORNERS_AWAY_INT}
+   Corners:              ${CORNERS_HOME:-0} - ${CORNERS_AWAY:-0}
    Yellow cards:         ${HOME_YELLOW_INT} - ${AWAY_YELLOW_INT}
    Red cards:            ${HOME_RED_INT} - ${AWAY_RED_INT}
-   Substitutions:        ${SUBSTITUTIONS_HOME_INT} - ${SUBSTITUTIONS_AWAY_INT}
-   Free kicks:           ${FREE_KICKS_HOME_INT} - ${FREE_KICKS_AWAY_INT}
-   Throw ins:            ${THROW_INS_HOME_INT} - ${THROW_INS_AWAY_INT}
-   Goal kicks:           ${GOAL_KICKS_HOME_INT} - ${GOAL_KICKS_AWAY_INT}
+   Substitutions:        ${SUBSTITUTIONS_HOME:-0} - ${SUBSTITUTIONS_AWAY:-0}
+   Free kicks:           ${FREE_KICKS_HOME:-0} - ${FREE_KICKS_AWAY:-0}
+   Throw ins:            ${THROW_INS_HOME:-0} - ${THROW_INS_AWAY:-0}
+   Goal kicks:           ${GOAL_KICKS_HOME:-0} - ${GOAL_KICKS_AWAY:-0}
 
 "
 
@@ -308,223 +300,8 @@ while IFS=',' read -r match_id home_team away_team league minute_num; do
         sleep 2
     fi
     
-    # Small delay between requests
-    sleep 1
-    
-done < "$TEMP_FILTERED"
-
-# Cleanup
-rm -f "$TEMP_MATCHES" "$TEMP_FILTERED"
-
-if [ "$FOUND_ALERTS" = false ]; then
-    echo "ℹ️ No matches found matching alert conditions"
-fi
-
-echo "🏁 Script completed"; then
-        minute_num="$minute_raw"
-        # Additional safety check - ensure minute_num is actually a number
-        if [ -n "$minute_num" ] && [ "$minute_num" -eq "$minute_num" ] 2>/dev/null; then
-            if [ "$minute_num" -ge 10 ] && [ "$minute_num" -le 80 ]; then
-                echo "$match_id,$home_team,$away_team,$league,$minute_num" >> "$TEMP_FILTERED"
-                FILTERED_MATCHES_COUNT=$((FILTERED_MATCHES_COUNT + 1))
-            fi
-        fi
-    fi
-done < "$TEMP_MATCHES"
-
-if [ "$FILTERED_MATCHES_COUNT" = "0" ]; then
-    echo "ℹ️ No live matches found between minute 60-80"
-    rm -f "$TEMP_MATCHES" "$TEMP_FILTERED"
-    exit 0
-fi
-
-echo "🔍 Found $FILTERED_MATCHES_COUNT matches between minute 60-80, checking statistics..."
-
-FOUND_ALERTS=false
-
-# Process filtered matches
-while IFS=',' read -r match_id home_team away_team league minute_num; do
-    echo "📊 Getting statistics for: $home_team vs $away_team (${minute_num}')"
-    
-    # Second API call - Get live statistics
-    STATS_RESPONSE=$(curl -s --compressed -X POST \
-        -H "Accept: application/json" \
-        -H "Accept-Encoding: gzip" \
-        -H "Content-Type: application/json" \
-        -H "DT: Android" \
-        -H "Host: ws.bwappservice.com" \
-        -H "L: en" \
-        -H "mMecilW: $REQUEST_ID" \
-        -H "PdnwSaa: GetLiveInPlayStatistics" \
-        -H "sportType: 1" \
-        -H "User-Agent: Dalvik/2.1.0 (Linux; U; Android 7.0; Pixel 9 Build/NBD92Y)" \
-        -H "xpAelZg: n7YDsi35eLS302z" \
-        -H "yCtoqLc: $USER_ID" \
-        -d "{\"userId\":\"$USER_ID\",\"matchId\":\"$match_id\"}" \
-        "$API_BASE_URL/GetLiveInPlayStatistics")
-    
-    if [ $? -ne 0 ] || [ -z "$STATS_RESPONSE" ]; then
-        echo "❌ Error getting statistics for match ID: $match_id"
-        continue
-    fi
-    
-    # Check if stats response is valid JSON
-    echo "$STATS_RESPONSE" | jq . > /dev/null 2>&1
-    if [ $? -ne 0 ]; then
-        echo "❌ Invalid JSON in statistics response for match ID: $match_id"
-        continue
-    fi
-    
-    # Check if statistics exist
-    STATS_COUNT=$(echo "$STATS_RESPONSE" | jq '.d.statistics | length' 2>/dev/null)
-    if [ "$STATS_COUNT" = "0" ] || [ "$STATS_COUNT" = "null" ]; then
-        echo "⚠️  No statistics available for this match"
-        continue
-    fi
-    
-    # Extract ALL statistics with original formatting
-    HOME_TEAM_NAME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ITeam") | .itemValueHome' 2>/dev/null)
-    AWAY_TEAM_NAME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ITeam") | .itemValueAway' 2>/dev/null)
-    
-    HOME_GOALS=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoal") | .itemValueHome' 2>/dev/null)
-    AWAY_GOALS=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoal") | .itemValueAway' 2>/dev/null)
-    
-    ON_TARGET_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IOnTarget") | .itemValueHome' 2>/dev/null)
-    ON_TARGET_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IOnTarget") | .itemValueAway' 2>/dev/null)
-    OFF_TARGET_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IOffTarget") | .itemValueHome' 2>/dev/null)
-    OFF_TARGET_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IOffTarget") | .itemValueAway' 2>/dev/null)
-    
-    ATTACKS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IAttacks") | .itemValueHome' 2>/dev/null)
-    ATTACKS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IAttacks") | .itemValueAway' 2>/dev/null)
-    DANGEROUS_ATTACKS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IDangerousAttacks") | .itemValueHome' 2>/dev/null)
-    DANGEROUS_ATTACKS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IDangerousAttacks") | .itemValueAway' 2>/dev/null)
-    
-    POSSESSION_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IPosession") | .itemValueHome' 2>/dev/null)
-    POSSESSION_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IPosession") | .itemValueAway' 2>/dev/null)
-    
-    CORNERS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ICorner") | .itemValueHome' 2>/dev/null)
-    CORNERS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ICorner") | .itemValueAway' 2>/dev/null)
-    
-    HOME_YELLOW=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IYellowCard") | .itemValueHome' 2>/dev/null)
-    AWAY_YELLOW=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IYellowCard") | .itemValueAway' 2>/dev/null)
-    HOME_RED=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IRedCard") | .itemValueHome' 2>/dev/null)
-    AWAY_RED=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IRedCard") | .itemValueAway' 2>/dev/null)
-    
-    SUBSTITUTIONS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ISubstitution") | .itemValueHome' 2>/dev/null)
-    SUBSTITUTIONS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "ISubstitution") | .itemValueAway' 2>/dev/null)
-    
-    FREE_KICKS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IFreeKick") | .itemValueHome' 2>/dev/null)
-    FREE_KICKS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IFreeKick") | .itemValueAway' 2>/dev/null)
-    
-    THROW_INS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IThrowIn") | .itemValueHome' 2>/dev/null)
-    THROW_INS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IThrowIn") | .itemValueAway' 2>/dev/null)
-    
-    GOAL_KICKS_HOME=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoalKick") | .itemValueHome' 2>/dev/null)
-    GOAL_KICKS_AWAY=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoalKick") | .itemValueAway' 2>/dev/null)
-    
-    # Convert to integers (handle null/empty values)
-    HOME_GOALS_INT=$(echo "$HOME_GOALS" | grep -E '^[0-9]+$' || echo "0")
-    AWAY_GOALS_INT=$(echo "$AWAY_GOALS" | grep -E '^[0-9]+$' || echo "0")
-    HOME_YELLOW_INT=$(echo "$HOME_YELLOW" | grep -E '^[0-9]+$' || echo "0")
-    AWAY_YELLOW_INT=$(echo "$AWAY_YELLOW" | grep -E '^[0-9]+$' || echo "0")
-    HOME_RED_INT=$(echo "$HOME_RED" | grep -E '^[0-9]+$' || echo "0")
-    AWAY_RED_INT=$(echo "$AWAY_RED" | grep -E '^[0-9]+$' || echo "0")
-    
-    ON_TARGET_HOME_INT=$(echo "$ON_TARGET_HOME" | grep -E '^[0-9]+$' || echo "0")
-    ON_TARGET_AWAY_INT=$(echo "$ON_TARGET_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    OFF_TARGET_HOME_INT=$(echo "$OFF_TARGET_HOME" | grep -E '^[0-9]+$' || echo "0")
-    OFF_TARGET_AWAY_INT=$(echo "$OFF_TARGET_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    ATTACKS_HOME_INT=$(echo "$ATTACKS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    ATTACKS_AWAY_INT=$(echo "$ATTACKS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    DANGEROUS_ATTACKS_HOME_INT=$(echo "$DANGEROUS_ATTACKS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    DANGEROUS_ATTACKS_AWAY_INT=$(echo "$DANGEROUS_ATTACKS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    CORNERS_HOME_INT=$(echo "$CORNERS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    CORNERS_AWAY_INT=$(echo "$CORNERS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    SUBSTITUTIONS_HOME_INT=$(echo "$SUBSTITUTIONS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    SUBSTITUTIONS_AWAY_INT=$(echo "$SUBSTITUTIONS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    FREE_KICKS_HOME_INT=$(echo "$FREE_KICKS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    FREE_KICKS_AWAY_INT=$(echo "$FREE_KICKS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    THROW_INS_HOME_INT=$(echo "$THROW_INS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    THROW_INS_AWAY_INT=$(echo "$THROW_INS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    GOAL_KICKS_HOME_INT=$(echo "$GOAL_KICKS_HOME" | grep -E '^[0-9]+$' || echo "0")
-    GOAL_KICKS_AWAY_INT=$(echo "$GOAL_KICKS_AWAY" | grep -E '^[0-9]+$' || echo "0")
-    
-    # Create detailed message with EXACT original formatting
-    MESSAGE="
-══════════════
-🏆 $league
-⏱️  Minute: ${minute_num}'
-🏟️  ${HOME_TEAM_NAME:-$home_team} vs ${AWAY_TEAM_NAME:-$away_team}
-══════════════
-
-⚽ SCORE:                ${HOME_GOALS_INT} - ${AWAY_GOALS_INT}
-
-🎯 SHOOTING STATS:
-   Shots on target:      ${ON_TARGET_HOME_INT} - ${ON_TARGET_AWAY_INT}
-   Shots off target:     ${OFF_TARGET_HOME_INT} - ${OFF_TARGET_AWAY_INT}
-
-⚡ ATTACKS:
-   Total attacks:        ${ATTACKS_HOME_INT} - ${ATTACKS_AWAY_INT}
-   Dangerous attacks:    ${DANGEROUS_ATTACKS_HOME_INT} - ${DANGEROUS_ATTACKS_AWAY_INT}
-
-🏃 POSSESSION:           ${POSSESSION_HOME:-0}% - ${POSSESSION_AWAY:-0}%
-
-📋 OTHER STATISTICS:
-   Corners:              ${CORNERS_HOME_INT} - ${CORNERS_AWAY_INT}
-   Yellow cards:         ${HOME_YELLOW_INT} - ${AWAY_YELLOW_INT}
-   Red cards:            ${HOME_RED_INT} - ${AWAY_RED_INT}
-   Substitutions:        ${SUBSTITUTIONS_HOME_INT} - ${SUBSTITUTIONS_AWAY_INT}
-   Free kicks:           ${FREE_KICKS_HOME_INT} - ${FREE_KICKS_AWAY_INT}
-   Throw ins:            ${THROW_INS_HOME_INT} - ${THROW_INS_AWAY_INT}
-   Goal kicks:           ${GOAL_KICKS_HOME_INT} - ${GOAL_KICKS_AWAY_INT}
-
-"
-
-    # Check condition 1: Both teams have 0 goals (EXACT PowerShell logic)
-    if [ "$HOME_GOALS_INT" = "0" ] && [ "$AWAY_GOALS_INT" = "0" ]; then
-        echo "🚨 Found 0-0 match: $home_team vs $away_team"
-        
-        curl -s --compressed -X POST \
-            -F "chat_id=$CHAT_ID" \
-            -F "text=$MESSAGE" \
-            -F "message_thread_id=1241" \
-            "$TELEGRAM_URI" > /dev/null
-        
-        if [ $? -eq 0 ]; then
-            echo "✅ 0-0 alert sent to Telegram (thread 1241)"
-            FOUND_ALERTS=true
-        else
-            echo "❌ Error sending 0-0 alert"
-        fi
-        
-        sleep 2
-    fi
-    
-    # Check condition 2: No yellow or red cards for both teams (EXACT PowerShell logic)
-    if [ "$HOME_YELLOW_INT" = "0" ] && [ "$AWAY_YELLOW_INT" = "0" ] && [ "$HOME_RED_INT" = "0" ] && [ "$AWAY_RED_INT" = "0" ]; then
-        echo "🟨 Found clean match (no cards): $home_team vs $away_team"
-        
-        curl -s --compressed -X POST \
-            -F "chat_id=$CHAT_ID" \
-            -F "text=$MESSAGE" \
-            -F "message_thread_id=1425" \
-            "$TELEGRAM_URI" > /dev/null
-        
-        if [ $? -eq 0 ]; then
-            echo "✅ Clean match alert sent to Telegram (thread 1425)"
-            FOUND_ALERTS=true
-        else
-            echo "❌ Error sending clean match alert"
-        fi
-        
-        sleep 2
-    fi
+    # Cleanup temp stats file
+    rm -f "$TEMP_STATS"
     
     # Small delay between requests
     sleep 1
