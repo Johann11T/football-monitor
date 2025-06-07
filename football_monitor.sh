@@ -115,7 +115,7 @@ while IFS=',' read -r match_id home_team away_team league minute_raw; do
         minute_num="$minute_raw"
         # Additional safety check - ensure minute_num is actually a number
         if [ -n "$minute_num" ] && [ "$minute_num" -eq "$minute_num" ] 2>/dev/null; then
-            if [ "$minute_num" -ge 10 ] && [ "$minute_num" -le 80 ]; then
+            if [ "$minute_num" -ge 2 ] && [ "$minute_num" -le 80 ]; then
                 echo "$match_id,$home_team,$away_team,$league,$minute_num" >> "$TEMP_FILTERED"
                 FILTERED_MATCHES_COUNT=$((FILTERED_MATCHES_COUNT + 1))
             fi
@@ -229,36 +229,20 @@ while IFS=',' read -r match_id home_team away_team league minute_num; do
     HOME_RED_INT=$(echo "$HOME_RED" | grep -E '^[0-9]+$' || echo "0")
     AWAY_RED_INT=$(echo "$AWAY_RED" | grep -E '^[0-9]+$' || echo "0")
     
-    # Create detailed message with EXACT original formatting that WORKED
-    MESSAGE="
-══════════════
-🏆 $league
-⏱️  Minute: ${minute_num}'
-🏟️  ${HOME_TEAM_NAME:-$home_team} vs ${AWAY_TEAM_NAME:-$away_team}
-══════════════
+    # Create detailed message with compact formatting for Telegram
+    MESSAGE="🏆 $league | ${minute_num}' min
+🏟️ ${HOME_TEAM_NAME:-$home_team} vs ${AWAY_TEAM_NAME:-$away_team}
 
-⚽ SCORE:                ${HOME_GOALS_INT} - ${AWAY_GOALS_INT}
+⚽ SCORE: ${HOME_GOALS_INT} - ${AWAY_GOALS_INT}
 
-🎯 SHOOTING STATS:
-   Shots on target:      ${ON_TARGET_HOME:-0} - ${ON_TARGET_AWAY:-0}
-   Shots off target:     ${OFF_TARGET_HOME:-0} - ${OFF_TARGET_AWAY:-0}
+🎯 SHOTS: ${ON_TARGET_HOME:-0}-${ON_TARGET_AWAY:-0} (on) | ${OFF_TARGET_HOME:-0}-${OFF_TARGET_AWAY:-0} (off)
+⚡ ATTACKS: ${ATTACKS_HOME:-0}-${ATTACKS_AWAY:-0} (total) | ${DANGEROUS_ATTACKS_HOME:-0}-${DANGEROUS_ATTACKS_AWAY:-0} (dangerous)
+🏃 POSSESSION: ${POSSESSION_HOME:-0}% - ${POSSESSION_AWAY:-0}%
 
-⚡ ATTACKS:
-   Total attacks:        ${ATTACKS_HOME:-0} - ${ATTACKS_AWAY:-0}
-   Dangerous attacks:    ${DANGEROUS_ATTACKS_HOME:-0} - ${DANGEROUS_ATTACKS_AWAY:-0}
-
-🏃 POSSESSION:           ${POSSESSION_HOME:-0}% - ${POSSESSION_AWAY:-0}%
-
-📋 OTHER STATISTICS:
-   Corners:              ${CORNERS_HOME:-0} - ${CORNERS_AWAY:-0}
-   Yellow cards:         ${HOME_YELLOW_INT} - ${AWAY_YELLOW_INT}
-   Red cards:            ${HOME_RED_INT} - ${AWAY_RED_INT}
-   Substitutions:        ${SUBSTITUTIONS_HOME:-0} - ${SUBSTITUTIONS_AWAY:-0}
-   Free kicks:           ${FREE_KICKS_HOME:-0} - ${FREE_KICKS_AWAY:-0}
-   Throw ins:            ${THROW_INS_HOME:-0} - ${THROW_INS_AWAY:-0}
-   Goal kicks:           ${GOAL_KICKS_HOME:-0} - ${GOAL_KICKS_AWAY:-0}
-
-"
+📊 OTHER STATS:
+🚩 Corners: ${CORNERS_HOME:-0}-${CORNERS_AWAY:-0} | 🟨 Yellow: ${HOME_YELLOW_INT}-${AWAY_YELLOW_INT} | 🟥 Red: ${HOME_RED_INT}-${AWAY_RED_INT}
+🔄 Subs: ${SUBSTITUTIONS_HOME:-0}-${SUBSTITUTIONS_AWAY:-0} | ⚽ Free kicks: ${FREE_KICKS_HOME:-0}-${FREE_KICKS_AWAY:-0}
+👐 Throws: ${THROW_INS_HOME:-0}-${THROW_INS_AWAY:-0} | 🥅 Goal kicks: ${GOAL_KICKS_HOME:-0}-${GOAL_KICKS_AWAY:-0}"
 
     # Check condition 1: Both teams have 0 goals (EXACT PowerShell logic)
     if [ "$HOME_GOALS_INT" = "0" ] && [ "$AWAY_GOALS_INT" = "0" ]; then
