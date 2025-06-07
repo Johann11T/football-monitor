@@ -229,35 +229,38 @@ while IFS=',' read -r match_id home_team away_team league minute_num; do
     HOME_RED_INT=$(echo "$HOME_RED" | grep -E '^[0-9]+$' || echo "0")
     AWAY_RED_INT=$(echo "$AWAY_RED" | grep -E '^[0-9]+$' || echo "0")
     
-    # Create detailed message with EXACT original formatting
+    # Create detailed message with improved formatting
     MESSAGE="
-══════════════
-🏆 $league
-⏱️  Minute: ${minute_num}'
-🏟️  ${HOME_TEAM_NAME:-$home_team} vs ${AWAY_TEAM_NAME:-$away_team}
-══════════════
+🏆━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━🏆
+                           $league
+🏆━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━🏆
 
-⚽ SCORE:                ${HOME_GOALS_INT} - ${AWAY_GOALS_INT}
+⏱️  MINUTE: ${minute_num}'                🏟️  ${HOME_TEAM_NAME:-$home_team} vs ${AWAY_TEAM_NAME:-$away_team}
 
-🎯 SHOOTING STATS:
-   Shots on target:      ${ON_TARGET_HOME:-0} - ${ON_TARGET_AWAY:-0}
-   Shots off target:     ${OFF_TARGET_HOME:-0} - ${OFF_TARGET_AWAY:-0}
+⚽ FINAL SCORE:          ${HOME_GOALS_INT} - ${AWAY_GOALS_INT}
 
-⚡ ATTACKS:
-   Total attacks:        ${ATTACKS_HOME:-0} - ${ATTACKS_AWAY:-0}
-   Dangerous attacks:    ${DANGEROUS_ATTACKS_HOME:-0} - ${DANGEROUS_ATTACKS_AWAY:-0}
+🎯 SHOOTING STATISTICS:
+   🎯 Shots on target:      ${ON_TARGET_HOME:-0} - ${ON_TARGET_AWAY:-0}
+   ❌ Shots off target:     ${OFF_TARGET_HOME:-0} - ${OFF_TARGET_AWAY:-0}
 
-🏃 POSSESSION:           ${POSSESSION_HOME:-0}% - ${POSSESSION_AWAY:-0}%
+⚡ ATTACKING PLAY:
+   🏃 Total attacks:        ${ATTACKS_HOME:-0} - ${ATTACKS_AWAY:-0}
+   💥 Dangerous attacks:    ${DANGEROUS_ATTACKS_HOME:-0} - ${DANGEROUS_ATTACKS_AWAY:-0}
 
-📋 OTHER STATISTICS:
-   Corners:              ${CORNERS_HOME:-0} - ${CORNERS_AWAY:-0}
-   Yellow cards:         ${HOME_YELLOW_INT} - ${AWAY_YELLOW_INT}
-   Red cards:            ${HOME_RED_INT} - ${AWAY_RED_INT}
-   Substitutions:        ${SUBSTITUTIONS_HOME:-0} - ${SUBSTITUTIONS_AWAY:-0}
-   Free kicks:           ${FREE_KICKS_HOME:-0} - ${FREE_KICKS_AWAY:-0}
-   Throw ins:            ${THROW_INS_HOME:-0} - ${THROW_INS_AWAY:-0}
-   Goal kicks:           ${GOAL_KICKS_HOME:-0} - ${GOAL_KICKS_AWAY:-0}
+🏃 BALL POSSESSION:      ${POSSESSION_HOME:-0}% - ${POSSESSION_AWAY:-0}%
 
+📊 MATCH STATISTICS:
+   🚩 Corners:              ${CORNERS_HOME:-0} - ${CORNERS_AWAY:-0}
+   🟨 Yellow cards:         ${HOME_YELLOW_INT} - ${AWAY_YELLOW_INT}
+   🟥 Red cards:            ${HOME_RED_INT} - ${AWAY_RED_INT}
+   🔄 Substitutions:        ${SUBSTITUTIONS_HOME:-0} - ${SUBSTITUTIONS_AWAY:-0}
+   
+📋 OTHER EVENTS:
+   ⚽ Free kicks:           ${FREE_KICKS_HOME:-0} - ${FREE_KICKS_AWAY:-0}
+   👐 Throw ins:            ${THROW_INS_HOME:-0} - ${THROW_INS_AWAY:-0}
+   🥅 Goal kicks:           ${GOAL_KICKS_HOME:-0} - ${GOAL_KICKS_AWAY:-0}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 "
 
     # Check condition 1: Both teams have 0 goals (EXACT PowerShell logic)
