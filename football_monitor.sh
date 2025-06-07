@@ -7,8 +7,8 @@ BOT_TOKEN="${BOT_TOKEN}"
 CHAT_ID="${CHAT_ID}"
 TELEGRAM_URI="https://api.telegram.org/bot$BOT_TOKEN/sendMessage"
 
-# Debug mode - set to 1 to see all debug output
-DEBUG=1
+# Debug mode - set to 0 to reduce output
+DEBUG=0
 
 debug_print() {
     if [ "$DEBUG" = "1" ]; then
@@ -40,7 +40,7 @@ echo "🔍 Fetching today's matches..."
 # First API call - Get match list of the day
 debug_print "Making first API call to GetMatchListOfDay..."
 
-MATCH_LIST_RESPONSE=$(curl -s -X POST \
+MATCH_LIST_RESPONSE=$(curl -s --compressed -X POST \
     -H "Accept: application/json" \
     -H "Accept-Encoding: gzip" \
     -H "Content-Type: application/json" \
@@ -183,7 +183,7 @@ while IFS=',' read -r match_id home_team away_team league minute_num; do
     # Second API call - Get live statistics
     debug_print "Making API call for match ID: $match_id"
     
-    STATS_RESPONSE=$(curl -s -X POST \
+    STATS_RESPONSE=$(curl -s --compressed -X POST \
         -H "Accept: application/json" \
         -H "Accept-Encoding: gzip" \
         -H "Content-Type: application/json" \
@@ -265,7 +265,7 @@ while IFS=',' read -r match_id home_team away_team league minute_num; do
     if [ "$HOME_GOALS_INT" = "0" ] && [ "$AWAY_GOALS_INT" = "0" ]; then
         echo "🚨 Found 0-0 match: $home_team vs $away_team"
         
-        curl -s -X POST \
+        curl -s --compressed -X POST \
             -F "chat_id=$CHAT_ID" \
             -F "text=🚨 0-0 Match Alert:
 $MESSAGE" \
@@ -287,7 +287,7 @@ $MESSAGE" \
     if [ "$HOME_YELLOW_INT" = "0" ] && [ "$AWAY_YELLOW_INT" = "0" ] && [ "$HOME_RED_INT" = "0" ] && [ "$AWAY_RED_INT" = "0" ]; then
         echo "🟨 Found clean match (no cards): $home_team vs $away_team"
         
-        curl -s -X POST \
+        curl -s --compressed -X POST \
             -F "chat_id=$CHAT_ID" \
             -F "text=🟨 Clean Match Alert (No Cards):
 $MESSAGE" \
