@@ -245,10 +245,10 @@ Possession: ${POSSESSION_HOME:-0}-${POSSESSION_AWAY:-0}
 Corners: ${CORNERS_HOME:-0}-${CORNERS_AWAY:-0}
 Yellow_Cards: ${HOME_YELLOW_INT}-${AWAY_YELLOW_INT}
 Red_Cards: ${HOME_RED_INT}-${AWAY_RED_INT}
-Substitutions: ${SUBSTITUTIONS_HOME:-0}-${SUBSTITUTIONS_AWAY:-0}
-Free_Kicks: ${FREE_KICKS_HOME:-0}-${FREE_KICKS_AWAY:-0}
-Throw_Ins: ${THROW_INS_HOME:-0}-${THROW_INS_AWAY:-0}
-Goal_Kicks: ${GOAL_KICKS_HOME:-0}-${GOAL_KICKS_AWAY:-0}"
+Substitutions: ${SUBSTITUTIONS_HOME:-0}-${SUBSTITUTIONS_AWAY:-0}"
+#Free_Kicks: ${FREE_KICKS_HOME:-0}-${FREE_KICKS_AWAY:-0}
+#Throw_Ins: ${THROW_INS_HOME:-0}-${THROW_INS_AWAY:-0}
+#Goal_Kicks: ${GOAL_KICKS_HOME:-0}-${GOAL_KICKS_AWAY:-0}
 
     # Check condition 1: Both teams have 0 goals (EXACT PowerShell logic)
     if [ "$HOME_GOALS_INT" = "0" ] && [ "$AWAY_GOALS_INT" = "0" ]; then
