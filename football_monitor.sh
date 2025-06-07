@@ -1,17 +1,30 @@
 #!/bin/bash
-# Football Monitor Script - Adapted from PowerShell
-# Monitors live matches and sends alerts for specific conditions
+# Football Monitor Script - Debug Version
+# Adapted from PowerShell with extensive debugging
 
-# Configuration - use environment variables from GitHub Secrets
+# Configuration - use environment variables
 BOT_TOKEN="${BOT_TOKEN}"
 CHAT_ID="${CHAT_ID}"
 TELEGRAM_URI="https://api.telegram.org/bot$BOT_TOKEN/sendMessage"
 
+# Debug mode - set to 1 to see all debug output
+DEBUG=1
+
+debug_print() {
+    if [ "$DEBUG" = "1" ]; then
+        echo "🐛 DEBUG: $1"
+    fi
+}
+
 # Verify configuration
 if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
-    echo "❌ Error: BOT_TOKEN and CHAT_ID must be configured as secrets"
+    echo "❌ Error: BOT_TOKEN and CHAT_ID must be configured"
+    echo "Usage: export BOT_TOKEN='your_token' && export CHAT_ID='your_chat_id'"
     exit 1
 fi
+
+debug_print "Bot token configured (length: ${#BOT_TOKEN})"
+debug_print "Chat ID: $CHAT_ID"
 
 # API configuration
 API_BASE_URL="https://ws.bwappservice.com/service.asmx"
@@ -20,10 +33,13 @@ REQUEST_ID="600887363328"
 
 # Get current timestamp (Unix epoch)
 TIMESTAMP=$(date +%s)
+debug_print "Timestamp: $TIMESTAMP"
 
 echo "🔍 Fetching today's matches..."
 
 # First API call - Get match list of the day
+debug_print "Making first API call to GetMatchListOfDay..."
+
 MATCH_LIST_RESPONSE=$(curl -s -X POST \
     -H "Accept: application/json" \
     -H "Accept-Encoding: gzip" \
@@ -40,190 +56,262 @@ MATCH_LIST_RESPONSE=$(curl -s -X POST \
     -d "{\"userId\":\"$USER_ID\",\"matchdate\":\"$TIMESTAMP\",\"requestId\":\"$REQUEST_ID\"}" \
     "$API_BASE_URL/GetMatchListOfDay")
 
-if [ $? -ne 0 ] || [ -z "$MATCH_LIST_RESPONSE" ]; then
-    echo "❌ Error getting match list from API"
+CURL_EXIT_CODE=$?
+debug_print "Curl exit code: $CURL_EXIT_CODE"
+
+if [ $CURL_EXIT_CODE -ne 0 ]; then
+    echo "❌ Error: Curl failed with exit code $CURL_EXIT_CODE"
+    exit 1
+fi
+
+if [ -z "$MATCH_LIST_RESPONSE" ]; then
+    echo "❌ Error: Empty response from API"
+    exit 1
+fi
+
+debug_print "Response length: ${#MATCH_LIST_RESPONSE}"
+debug_print "First 200 chars of response: ${MATCH_LIST_RESPONSE:0:200}..."
+
+# Check if response is valid JSON
+echo "$MATCH_LIST_RESPONSE" | jq . > /dev/null 2>&1
+if [ $? -ne 0 ]; then
+    echo "❌ Error: Invalid JSON response"
+    echo "Full response: $MATCH_LIST_RESPONSE"
     exit 1
 fi
 
 echo "✅ Match list retrieved successfully"
 
-# Extract live matches (excluding FT, HT, Pen. and matches with ":" in minute)
-# Parse JSON and filter matches
-LIVE_MATCHES=$(echo "$MATCH_LIST_RESPONSE" | jq -r '
-.d.leagueMatchs[]?.matchs[]? | 
-select(.matchMinute != null and .matchMinute != "FT" and .matchMinute != "HT" and .matchMinute != "Pen." and (.matchMinute | tostring | contains(":") | not)) |
-{
-    matchId: .matchId,
-    homeTeam: .teamHomeName,
-    awayTeam: .teamAwayName,
-    league: .leagueName,
-    matchMinute: (.matchMinute | tonumber)
-} |
-select(.matchMinute >= 10 and .matchMinute <= 80) |
-@json
-' 2>/dev/null)
+# Check if we have the expected structure
+HAS_D=$(echo "$MATCH_LIST_RESPONSE" | jq 'has("d")' 2>/dev/null)
+debug_print "Has 'd' property: $HAS_D"
 
-if [ -z "$LIVE_MATCHES" ]; then
-    echo "ℹ️ No live matches found between minute 60-80"
+if [ "$HAS_D" != "true" ]; then
+    echo "❌ Error: Response doesn't have expected 'd' property"
+    echo "Response structure: $(echo "$MATCH_LIST_RESPONSE" | jq 'keys' 2>/dev/null)"
+    exit 1
+fi
+
+# Count leagues and matches
+LEAGUES_COUNT=$(echo "$MATCH_LIST_RESPONSE" | jq '.d.leagueMatchs | length' 2>/dev/null)
+debug_print "Number of leagues: $LEAGUES_COUNT"
+
+if [ "$LEAGUES_COUNT" = "0" ] || [ "$LEAGUES_COUNT" = "null" ]; then
+    echo "ℹ️ No leagues found in response"
     exit 0
 fi
 
-echo "🔍 Found matches between minute 60-80, checking statistics..."
+# Extract all matches and filter
+echo "🔍 Processing matches..."
+PROCESSED_MATCHES=0
+LIVE_MATCHES_COUNT=0
+FILTERED_MATCHES_COUNT=0
+
+# Create temporary file for match processing
+TEMP_MATCHES="/tmp/matches_$$"
+TEMP_FILTERED="/tmp/filtered_$$"
+
+# Extract all matches
+echo "$MATCH_LIST_RESPONSE" | jq -r '
+.d.leagueMatchs[]? | 
+.matchs[]? | 
+select(.matchId != null) |
+[.matchId, .teamHomeName, .teamAwayName, .leagueName, .matchMinute] |
+@csv
+' > "$TEMP_MATCHES" 2>/dev/null
+
+TOTAL_MATCHES=$(wc -l < "$TEMP_MATCHES" 2>/dev/null || echo "0")
+debug_print "Total matches extracted: $TOTAL_MATCHES"
+
+if [ "$TOTAL_MATCHES" = "0" ]; then
+    echo "ℹ️ No matches found in response"
+    rm -f "$TEMP_MATCHES"
+    exit 0
+fi
+
+# Filter matches (exclude FT, HT, Pen. and those with ":")
+while IFS=',' read -r match_id home_team away_team league minute_raw; do
+    # Remove quotes
+    match_id=$(echo "$match_id" | tr -d '"')
+    home_team=$(echo "$home_team" | tr -d '"')
+    away_team=$(echo "$away_team" | tr -d '"')
+    league=$(echo "$league" | tr -d '"')
+    minute_raw=$(echo "$minute_raw" | tr -d '"')
+    
+    PROCESSED_MATCHES=$((PROCESSED_MATCHES + 1))
+    
+    # Skip if minute is FT, HT, Pen., null, or contains ":"
+    if [ "$minute_raw" = "FT" ] || [ "$minute_raw" = "HT" ] || [ "$minute_raw" = "Pen." ] || [ "$minute_raw" = "null" ] || [ -z "$minute_raw" ]; then
+        debug_print "Skipping finished match: $home_team vs $away_team ($minute_raw)"
+        continue
+    fi
+    
+    if echo "$minute_raw" | grep -q ":"; then
+        debug_print "Skipping match with time format: $home_team vs $away_team ($minute_raw)"
+        continue
+    fi
+    
+    LIVE_MATCHES_COUNT=$((LIVE_MATCHES_COUNT + 1))
+    
+    # Check if minute is numeric and between 60-80
+    if echo "$minute_raw" | grep -q '^[0-9]\+$'; then
+        minute_num="$minute_raw"
+        if [ "$minute_num" -ge 10 ] && [ "$minute_num" -le 80 ]; then
+            echo "$match_id,$home_team,$away_team,$league,$minute_num" >> "$TEMP_FILTERED"
+            FILTERED_MATCHES_COUNT=$((FILTERED_MATCHES_COUNT + 1))
+            debug_print "Match in range: $home_team vs $away_team (${minute_num}')"
+        fi
+    fi
+done < "$TEMP_MATCHES"
+
+debug_print "Processed: $PROCESSED_MATCHES, Live: $LIVE_MATCHES_COUNT, Filtered (60-80): $FILTERED_MATCHES_COUNT"
+
+if [ "$FILTERED_MATCHES_COUNT" = "0" ]; then
+    echo "ℹ️ No live matches found between minute 60-80"
+    rm -f "$TEMP_MATCHES" "$TEMP_FILTERED"
+    exit 0
+fi
+
+echo "🔍 Found $FILTERED_MATCHES_COUNT matches between minute 60-80, checking statistics..."
 
 FOUND_ALERTS=false
 
-# Process each match
-while IFS= read -r match_json; do
-    if [ ! -z "$match_json" ] && [ "$match_json" != "null" ]; then
-        MATCH_ID=$(echo "$match_json" | jq -r '.matchId')
-        HOME_TEAM=$(echo "$match_json" | jq -r '.homeTeam')
-        AWAY_TEAM=$(echo "$match_json" | jq -r '.awayTeam')
-        LEAGUE=$(echo "$match_json" | jq -r '.league')
-        MATCH_MINUTE=$(echo "$match_json" | jq -r '.matchMinute')
+# Process filtered matches
+while IFS=',' read -r match_id home_team away_team league minute_num; do
+    echo "📊 Getting statistics for: $home_team vs $away_team (${minute_num}')"
+    
+    # Second API call - Get live statistics
+    debug_print "Making API call for match ID: $match_id"
+    
+    STATS_RESPONSE=$(curl -s -X POST \
+        -H "Accept: application/json" \
+        -H "Accept-Encoding: gzip" \
+        -H "Content-Type: application/json" \
+        -H "DT: Android" \
+        -H "Host: ws.bwappservice.com" \
+        -H "L: en" \
+        -H "mMecilW: $REQUEST_ID" \
+        -H "PdnwSaa: GetLiveInPlayStatistics" \
+        -H "sportType: 1" \
+        -H "User-Agent: Dalvik/2.1.0 (Linux; U; Android 7.0; Pixel 9 Build/NBD92Y)" \
+        -H "xpAelZg: n7YDsi35eLS302z" \
+        -H "yCtoqLc: $USER_ID" \
+        -d "{\"userId\":\"$USER_ID\",\"matchId\":\"$match_id\"}" \
+        "$API_BASE_URL/GetLiveInPlayStatistics")
+    
+    STATS_CURL_EXIT=$?
+    debug_print "Stats API curl exit code: $STATS_CURL_EXIT"
+    
+    if [ $STATS_CURL_EXIT -ne 0 ]; then
+        echo "❌ Error getting statistics for match ID: $match_id (curl error: $STATS_CURL_EXIT)"
+        continue
+    fi
+    
+    if [ -z "$STATS_RESPONSE" ]; then
+        echo "❌ Empty statistics response for match ID: $match_id"
+        continue
+    fi
+    
+    debug_print "Stats response length: ${#STATS_RESPONSE}"
+    debug_print "Stats response preview: ${STATS_RESPONSE:0:200}..."
+    
+    # Check if stats response is valid JSON
+    echo "$STATS_RESPONSE" | jq . > /dev/null 2>&1
+    if [ $? -ne 0 ]; then
+        echo "❌ Invalid JSON in statistics response for match ID: $match_id"
+        debug_print "Stats response: $STATS_RESPONSE"
+        continue
+    fi
+    
+    # Check if statistics exist
+    STATS_COUNT=$(echo "$STATS_RESPONSE" | jq '.d.statistics | length' 2>/dev/null)
+    debug_print "Statistics count: $STATS_COUNT"
+    
+    if [ "$STATS_COUNT" = "0" ] || [ "$STATS_COUNT" = "null" ]; then
+        echo "⚠️  No statistics available for this match"
+        continue
+    fi
+    
+    # Extract key statistics
+    HOME_GOALS=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoal") | .itemValueHome' 2>/dev/null)
+    AWAY_GOALS=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IGoal") | .itemValueAway' 2>/dev/null)
+    
+    HOME_YELLOW=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IYellowCard") | .itemValueHome' 2>/dev/null)
+    AWAY_YELLOW=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IYellowCard") | .itemValueAway' 2>/dev/null)
+    HOME_RED=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IRedCard") | .itemValueHome' 2>/dev/null)
+    AWAY_RED=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[] | select(.itemName == "IRedCard") | .itemValueAway' 2>/dev/null)
+    
+    debug_print "Goals: $HOME_GOALS - $AWAY_GOALS"
+    debug_print "Yellow cards: $HOME_YELLOW - $AWAY_YELLOW"
+    debug_print "Red cards: $HOME_RED - $HOME_RED"
+    
+    # Convert to integers (handle null/empty values)
+    HOME_GOALS_INT=$(echo "$HOME_GOALS" | grep -E '^[0-9]+$' || echo "0")
+    AWAY_GOALS_INT=$(echo "$AWAY_GOALS" | grep -E '^[0-9]+$' || echo "0")
+    HOME_YELLOW_INT=$(echo "$HOME_YELLOW" | grep -E '^[0-9]+$' || echo "0")
+    AWAY_YELLOW_INT=$(echo "$AWAY_YELLOW" | grep -E '^[0-9]+$' || echo "0")
+    HOME_RED_INT=$(echo "$HOME_RED" | grep -E '^[0-9]+$' || echo "0")
+    AWAY_RED_INT=$(echo "$AWAY_RED" | grep -E '^[0-9]+$' || echo "0")
+    
+    # Build detailed message (simplified for testing)
+    MESSAGE="🏆 $league
+⏱️  Minute: ${minute_num}'
+🏟️  $home_team vs $away_team
+⚽ SCORE: ${HOME_GOALS_INT} - ${AWAY_GOALS_INT}
+🟨 Yellow cards: ${HOME_YELLOW_INT} - ${AWAY_YELLOW_INT}
+🟥 Red cards: ${HOME_RED_INT} - ${AWAY_RED_INT}"
+    
+    # Check condition 1: Both teams have 0 goals
+    if [ "$HOME_GOALS_INT" = "0" ] && [ "$AWAY_GOALS_INT" = "0" ]; then
+        echo "🚨 Found 0-0 match: $home_team vs $away_team"
         
-        echo "📊 Getting statistics for: $HOME_TEAM vs $AWAY_TEAM (${MATCH_MINUTE}')"
+        curl -s -X POST \
+            -F "chat_id=$CHAT_ID" \
+            -F "text=🚨 0-0 Match Alert:
+$MESSAGE" \
+            -F "message_thread_id=1241" \
+            "$TELEGRAM_URI"
         
-        # Second API call - Get live statistics for this match
-        STATS_RESPONSE=$(curl -s -X POST \
-            -H "Accept: application/json" \
-            -H "Accept-Encoding: gzip" \
-            -H "Content-Type: application/json" \
-            -H "DT: Android" \
-            -H "Host: ws.bwappservice.com" \
-            -H "L: en" \
-            -H "mMecilW: $REQUEST_ID" \
-            -H "PdnwSaa: GetLiveInPlayStatistics" \
-            -H "sportType: 1" \
-            -H "User-Agent: Dalvik/2.1.0 (Linux; U; Android 7.0; Pixel 9 Build/NBD92Y)" \
-            -H "xpAelZg: n7YDsi35eLS302z" \
-            -H "yCtoqLc: $USER_ID" \
-            -d "{\"userId\":\"$USER_ID\",\"matchId\":\"$MATCH_ID\"}" \
-            "$API_BASE_URL/GetLiveInPlayStatistics")
-        
-        if [ $? -eq 0 ] && [ ! -z "$STATS_RESPONSE" ]; then
-            # Parse statistics
-            STATS=$(echo "$STATS_RESPONSE" | jq -r '.d.statistics[]? | {(.itemName): {home: .itemValueHome, away: .itemValueAway}} | to_entries[] | "\(.key)|\(.value.home)|\(.value.away)"' 2>/dev/null)
-            
-            if [ ! -z "$STATS" ]; then
-                # Extract specific statistics
-                HOME_GOALS=$(echo "$STATS" | grep "^IGoal|" | cut -d'|' -f2 | head -1)
-                AWAY_GOALS=$(echo "$STATS" | grep "^IGoal|" | cut -d'|' -f3 | head -1)
-                HOME_TEAM_NAME=$(echo "$STATS" | grep "^ITeam|" | cut -d'|' -f2 | head -1)
-                AWAY_TEAM_NAME=$(echo "$STATS" | grep "^ITeam|" | cut -d'|' -f3 | head -1)
-                
-                HOME_YELLOW=$(echo "$STATS" | grep "^IYellowCard|" | cut -d'|' -f2 | head -1)
-                AWAY_YELLOW=$(echo "$STATS" | grep "^IYellowCard|" | cut -d'|' -f3 | head -1)
-                HOME_RED=$(echo "$STATS" | grep "^IRedCard|" | cut -d'|' -f2 | head -1)
-                AWAY_RED=$(echo "$STATS" | grep "^IRedCard|" | cut -d'|' -f3 | head -1)
-                
-                ON_TARGET_HOME=$(echo "$STATS" | grep "^IOnTarget|" | cut -d'|' -f2 | head -1)
-                ON_TARGET_AWAY=$(echo "$STATS" | grep "^IOnTarget|" | cut -d'|' -f3 | head -1)
-                OFF_TARGET_HOME=$(echo "$STATS" | grep "^IOffTarget|" | cut -d'|' -f2 | head -1)
-                OFF_TARGET_AWAY=$(echo "$STATS" | grep "^IOffTarget|" | cut -d'|' -f3 | head -1)
-                
-                ATTACKS_HOME=$(echo "$STATS" | grep "^IAttacks|" | cut -d'|' -f2 | head -1)
-                ATTACKS_AWAY=$(echo "$STATS" | grep "^IAttacks|" | cut -d'|' -f3 | head -1)
-                DANGEROUS_ATTACKS_HOME=$(echo "$STATS" | grep "^IDangerousAttacks|" | cut -d'|' -f2 | head -1)
-                DANGEROUS_ATTACKS_AWAY=$(echo "$STATS" | grep "^IDangerousAttacks|" | cut -d'|' -f3 | head -1)
-                
-                POSSESSION_HOME=$(echo "$STATS" | grep "^IPosession|" | cut -d'|' -f2 | head -1)
-                POSSESSION_AWAY=$(echo "$STATS" | grep "^IPosession|" | cut -d'|' -f3 | head -1)
-                
-                CORNERS_HOME=$(echo "$STATS" | grep "^ICorner|" | cut -d'|' -f2 | head -1)
-                CORNERS_AWAY=$(echo "$STATS" | grep "^ICorner|" | cut -d'|' -f3 | head -1)
-                
-                SUBSTITUTIONS_HOME=$(echo "$STATS" | grep "^ISubstitution|" | cut -d'|' -f2 | head -1)
-                SUBSTITUTIONS_AWAY=$(echo "$STATS" | grep "^ISubstitution|" | cut -d'|' -f3 | head -1)
-                
-                FREE_KICKS_HOME=$(echo "$STATS" | grep "^IFreeKick|" | cut -d'|' -f2 | head -1)
-                FREE_KICKS_AWAY=$(echo "$STATS" | grep "^IFreeKick|" | cut -d'|' -f3 | head -1)
-                
-                THROW_INS_HOME=$(echo "$STATS" | grep "^IThrowIn|" | cut -d'|' -f2 | head -1)
-                THROW_INS_AWAY=$(echo "$STATS" | grep "^IThrowIn|" | cut -d'|' -f3 | head -1)
-                
-                GOAL_KICKS_HOME=$(echo "$STATS" | grep "^IGoalKick|" | cut -d'|' -f2 | head -1)
-                GOAL_KICKS_AWAY=$(echo "$STATS" | grep "^IGoalKick|" | cut -d'|' -f3 | head -1)
-                
-                # Create detailed message
-                MESSAGE="
-══════════════
-🏆 $LEAGUE
-⏱️  Minute: ${MATCH_MINUTE}'
-🏟️  ${HOME_TEAM_NAME:-$HOME_TEAM} vs ${AWAY_TEAM_NAME:-$AWAY_TEAM}
-══════════════
-
-⚽ SCORE:                ${HOME_GOALS:-0} - ${AWAY_GOALS:-0}
-
-🎯 SHOOTING STATS:
-   Shots on target:      ${ON_TARGET_HOME:-0} - ${ON_TARGET_AWAY:-0}
-   Shots off target:     ${OFF_TARGET_HOME:-0} - ${OFF_TARGET_AWAY:-0}
-
-⚡ ATTACKS:
-   Total attacks:        ${ATTACKS_HOME:-0} - ${ATTACKS_AWAY:-0}
-   Dangerous attacks:    ${DANGEROUS_ATTACKS_HOME:-0} - ${DANGEROUS_ATTACKS_AWAY:-0}
-
-🏃 POSSESSION:           ${POSSESSION_HOME:-0}% - ${POSSESSION_AWAY:-0}%
-
-📋 OTHER STATISTICS:
-   Corners:              ${CORNERS_HOME:-0} - ${CORNERS_AWAY:-0}
-   Yellow cards:         ${HOME_YELLOW:-0} - ${AWAY_YELLOW:-0}
-   Red cards:            ${HOME_RED:-0} - ${AWAY_RED:-0}
-   Substitutions:        ${SUBSTITUTIONS_HOME:-0} - ${SUBSTITUTIONS_AWAY:-0}
-   Free kicks:           ${FREE_KICKS_HOME:-0} - ${FREE_KICKS_AWAY:-0}
-   Throw ins:            ${THROW_INS_HOME:-0} - ${THROW_INS_AWAY:-0}
-   Goal kicks:           ${GOAL_KICKS_HOME:-0} - ${GOAL_KICKS_AWAY:-0}
-"
-
-                # Check condition 1: Both teams have 0 goals
-                if [ "${HOME_GOALS:-0}" = "0" ] && [ "${AWAY_GOALS:-0}" = "0" ]; then
-                    echo "🚨 Found 0-0 match: $HOME_TEAM vs $AWAY_TEAM"
-                    
-                    curl -s -X POST \
-                        -F "chat_id=$CHAT_ID" \
-                        -F "text=$MESSAGE" \
-                        -F "message_thread_id=1241" \
-                        "$TELEGRAM_URI" > /dev/null
-                    
-                    if [ $? -eq 0 ]; then
-                        echo "✅ 0-0 alert sent to Telegram (thread 1241)"
-                        FOUND_ALERTS=true
-                    else
-                        echo "❌ Error sending 0-0 alert"
-                    fi
-                    
-                    sleep 2
-                fi
-                
-                # Check condition 2: No yellow or red cards for both teams
-                if [ "${HOME_YELLOW:-0}" = "0" ] && [ "${AWAY_YELLOW:-0}" = "0" ] && [ "${HOME_RED:-0}" = "0" ] && [ "${AWAY_RED:-0}" = "0" ]; then
-                    echo "🟨 Found clean match (no cards): $HOME_TEAM vs $AWAY_TEAM"
-                    
-                    curl -s -X POST \
-                        -F "chat_id=$CHAT_ID" \
-                        -F "text=$MESSAGE" \
-                        -F "message_thread_id=1425" \
-                        "$TELEGRAM_URI" > /dev/null
-                    
-                    if [ $? -eq 0 ]; then
-                        echo "✅ Clean match alert sent to Telegram (thread 1425)"
-                        FOUND_ALERTS=true
-                    else
-                        echo "❌ Error sending clean match alert"
-                    fi
-                    
-                    sleep 2
-                fi
-            else
-                echo "⚠️  No statistics available for this match"
-            fi
+        SEND_RESULT=$?
+        if [ $SEND_RESULT -eq 0 ]; then
+            echo "✅ 0-0 alert sent to Telegram (thread 1241)"
+            FOUND_ALERTS=true
         else
-            echo "❌ Error getting statistics for match ID: $MATCH_ID"
+            echo "❌ Error sending 0-0 alert (curl exit: $SEND_RESULT)"
         fi
         
-        # Small delay between requests
-        sleep 1
+        sleep 2
     fi
-done <<< "$LIVE_MATCHES"
+    
+    # Check condition 2: No yellow or red cards for both teams
+    if [ "$HOME_YELLOW_INT" = "0" ] && [ "$AWAY_YELLOW_INT" = "0" ] && [ "$HOME_RED_INT" = "0" ] && [ "$AWAY_RED_INT" = "0" ]; then
+        echo "🟨 Found clean match (no cards): $home_team vs $away_team"
+        
+        curl -s -X POST \
+            -F "chat_id=$CHAT_ID" \
+            -F "text=🟨 Clean Match Alert (No Cards):
+$MESSAGE" \
+            -F "message_thread_id=1425" \
+            "$TELEGRAM_URI"
+        
+        SEND_RESULT=$?
+        if [ $SEND_RESULT -eq 0 ]; then
+            echo "✅ Clean match alert sent to Telegram (thread 1425)"
+            FOUND_ALERTS=true
+        else
+            echo "❌ Error sending clean match alert (curl exit: $SEND_RESULT)"
+        fi
+        
+        sleep 2
+    fi
+    
+    # Small delay between requests
+    sleep 1
+    
+done < "$TEMP_FILTERED"
+
+# Cleanup
+rm -f "$TEMP_MATCHES" "$TEMP_FILTERED"
 
 if [ "$FOUND_ALERTS" = false ]; then
     echo "ℹ️ No matches found matching alert conditions"
