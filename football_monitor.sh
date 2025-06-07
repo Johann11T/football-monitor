@@ -115,7 +115,7 @@ while IFS=',' read -r match_id home_team away_team league minute_raw; do
         minute_num="$minute_raw"
         # Additional safety check - ensure minute_num is actually a number
         if [ -n "$minute_num" ] && [ "$minute_num" -eq "$minute_num" ] 2>/dev/null; then
-            if [ "$minute_num" -ge 2 ] && [ "$minute_num" -le 80 ]; then
+            if [ "$minute_num" -ge 60 ] && [ "$minute_num" -le 80 ]; then
                 echo "$match_id,$home_team,$away_team,$league,$minute_num" >> "$TEMP_FILTERED"
                 FILTERED_MATCHES_COUNT=$((FILTERED_MATCHES_COUNT + 1))
             fi
