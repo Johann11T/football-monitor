@@ -59,7 +59,7 @@ select(.matchMinute != null and .matchMinute != "FT" and .matchMinute != "HT" an
     league: .leagueName,
     matchMinute: (.matchMinute | tonumber)
 } |
-select(.matchMinute >= 60 and .matchMinute <= 80) |
+select(.matchMinute >= 10 and .matchMinute <= 80) |
 @json
 ' 2>/dev/null)
 
