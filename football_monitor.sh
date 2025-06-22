@@ -15,7 +15,7 @@ if [ -z "$BOT_TOKEN" ] || [ -z "$CHAT_ID" ]; then
 fi
 
 # API configuration
-API_BASE_URL="https://ws.bwappservice.com/service.asmx"
+API_BASE_URL="${API_BASE_URL}"
 USER_ID="5325664"
 REQUEST_ID="600887363328"
 
